@@ -24,6 +24,7 @@ from zipfile import ZipFile
 import cv2
 import numpy as np
 import torch
+from scipy.signal import medfilt
 from scipy.spatial import cKDTree
 from gsplat import rasterization
 from gsplat.optimizers import SelectiveAdam
@@ -45,6 +46,14 @@ RUN_NAME = os.environ.get("KITTI360_RUN_NAME", time.strftime("run_%Y%m%d_%H%M%S"
 SYNC_DIR = os.environ.get("KITTI360_SYNC_DIR", "")      # e.g. a Drive folder; empty disables syncing
 RESUME = os.environ.get("KITTI360_RESUME", "0") == "1"   # continue RUN_NAME from its last checkpoint
 CKPT_EVERY = int(os.environ.get("KITTI360_CKPT_EVERY", "2500"))
+USE_MASK = os.environ.get("KITTI360_MASK", "1") == "1"    # ignore the car hood / outside the fisheye circle
+USE_SSIM = os.environ.get("KITTI360_SSIM", "0") == "1"    # loss = 0.8 L1 + 0.2 (1 - SSIM)
+USE_SKY = os.environ.get("KITTI360_SKY", "0") == "1"      # seed large Gaussians on a far sky dome
+MASK_ONLY = os.environ.get("KITTI360_MASK_ONLY", "0") == "1"
+PERSIST = float(os.environ.get("KITTI360_PERSIST", "0.5"))   # edge persistence above which a lower-image edge is static
+SKY_RADIUS, SKY_SCALE, SKY_PER_FRAME = 200.0, 12.0, 400
+MAX_SCALE = 40.0 if USE_SKY else 0.5
+LOG_PATH = os.environ.get("KITTI360_LOG", "/content/train.log")
 TEST_EVERY = int(os.environ.get("KITTI360_TEST_EVERY", "10"))
 SCALE = 2
 CAMERAS = [
@@ -159,6 +168,48 @@ def sample_colors(views_of_frame, pts_world):
     return colors, seen
 
 
+# ------------------------------------------------------------------ masks, SSIM
+def static_masks(views):
+    """1 = supervise, 0 = ignore. The car hood and the black area outside the fisheye circle are
+    fixed in the camera frame. The hood's colours change with the light, but its *edges* stay at the
+    same pixels in every frame while scene edges move, so edge persistence finds it."""
+    masks = {}
+    for cam in ("image_02", "image_03"):
+        gray = np.stack([cv2.cvtColor(v["image_np"], cv2.COLOR_RGB2GRAY) for v in views if v["cam"] == cam]
+                        ).astype(np.float32)
+        sob = lambda g: np.hypot(cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3))
+        mean_grad = np.mean([sob(g) for g in gray], axis=0)          # average edge strength per pixel
+        persistence = sob(gray.mean(0)) / (mean_grad + 1.0)          # ~1 where edges never move
+        h, w = mean_grad.shape
+        rows = np.arange(h)[:, None]
+        edges = ((persistence > PERSIST) & (mean_grad > 15) & (rows > 0.63 * h)).astype(np.uint8)
+        closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((31, 31), np.uint8))
+        # Hood = everything below the lowest-reaching persistent edge in each column.
+        top = np.array([np.flatnonzero(closed[:, x]).min() if closed[:, x].any() else h for x in range(w)], np.float32)
+        top = medfilt(top, 61)                       # single-column noise must not cut into the scene
+        hood = (np.arange(h)[:, None] >= top[None, :]).astype(np.uint8)
+        outside = ((gray.mean(0) < 12) & (gray.std(0) < 6)).astype(np.uint8)
+        bad = cv2.dilate(np.maximum(hood, outside), np.ones((9, 9), np.uint8))
+        masks[cam] = (1 - bad).astype(np.float32)
+        cv2.imwrite(str(OUT / f"mask_{cam}.png"), masks[cam] * 255)
+        cv2.imwrite(str(OUT / f"persist_{cam}.png"), np.clip(persistence * 255, 0, 255).astype(np.uint8))
+        sync(OUT / f"mask_{cam}.png")
+        print(f"[MASK] {cam}: supervising {masks[cam].mean() * 100:.0f}% of pixels", flush=True)
+    return masks
+
+
+def ssim_fn(a, b, win=11, sigma=1.5):
+    x, y = a.permute(2, 0, 1)[None], b.permute(2, 0, 1)[None]
+    g = torch.exp(-((torch.arange(win, device=x.device).float() - win // 2) ** 2) / (2 * sigma**2))
+    g = g / g.sum()
+    k = (g[:, None] * g[None, :])[None, None].repeat(3, 1, 1, 1)
+    f = lambda t: torch.nn.functional.conv2d(t, k, padding=win // 2, groups=3)
+    mx, my = f(x), f(y)
+    sxx, syy, sxy = f(x * x) - mx**2, f(y * y) - my**2, f(x * y) - mx * my
+    c1, c2 = 0.01**2, 0.03**2
+    return (((2 * mx * my + c1) * (2 * sxy + c2)) / ((mx**2 + my**2 + c1) * (sxx + syy + c2))).mean()
+
+
 # ------------------------------------------------------------------ durable output
 def sync(path):
     """Copy a finished local file into SYNC_DIR/RUN_NAME atomically (tmp file, size check, rename)."""
@@ -205,7 +256,7 @@ def main():
     np.random.seed(SEED)
     torch.manual_seed(SEED)
     import gsplat
-    config = dict(run=RUN_NAME, seed=SEED, frames=N_FRAMES, steps=STEPS, cap_max=CAP_MAX,
+    config = dict(mask=USE_MASK, ssim=USE_SSIM, sky=USE_SKY, run=RUN_NAME, seed=SEED, frames=N_FRAMES, steps=STEPS, cap_max=CAP_MAX,
                   init_gaussians=MAX_GAUSSIANS, test_every=TEST_EVERY, image_scale=SCALE,
                   torch=torch.__version__, gsplat=gsplat.__version__, resume=RESUME,
                   gpu=torch.cuda.get_device_name(0))
@@ -264,6 +315,13 @@ def main():
             views.append(dict(fid=fid, cam=cam, model=model, h=h, w=w, image_np=rgb, K_np=k,
                               radial_np=radial, T=T))
 
+    masks = static_masks(views) if (USE_MASK or MASK_ONLY) else {}
+    if MASK_ONLY:
+        print("[DONE] mask preview only", flush=True)
+        return
+    if not USE_MASK:
+        masks = {}
+
     # ---- Gaussian initialisation: LiDAR geometry + colour from the camera that saw it.
     rng = np.random.default_rng(42)
     per_frame = max(500, int(MAX_GAUSSIANS * 1.5 / len(frame_ids)))
@@ -289,6 +347,23 @@ def main():
         points, colors0 = points[pick], colors0[pick]
     n = len(points)
     knn = cKDTree(points).query(points, k=4)[0][:, 1:].mean(1).clip(0.03, 1.0).astype(np.float32)
+    if USE_SKY:
+        sky_pts, sky_col = [], []
+        for fid in frame_ids:
+            d = rng.normal(size=(SKY_PER_FRAME, 3))
+            d = d / np.linalg.norm(d, axis=1, keepdims=True)
+            d[:, 2] = np.abs(d[:, 2])
+            d = d[d[:, 2] > np.sin(np.radians(12))]        # world z is up: keep the upper sky
+            world = world_from_lidar[fid][:3, 3] + SKY_RADIUS * d
+            colors, seen = sample_colors(views_by_frame[fid], world)
+            sky_pts.append(world[seen])
+            sky_col.append(colors[seen])
+        sky_pts, sky_col = np.concatenate(sky_pts).astype(np.float32), np.concatenate(sky_col).astype(np.float32)
+        points = np.concatenate([points, sky_pts])
+        colors0 = np.concatenate([colors0, sky_col])
+        knn = np.concatenate([knn, np.full(len(sky_pts), SKY_SCALE, np.float32)])
+        n = len(points)
+        print(f"[INIT] +{len(sky_pts)} sky Gaussians on a {SKY_RADIUS:.0f} m dome", flush=True)
     print(f"[INIT] {n} Gaussians from LiDAR, extent {np.ptp(points, axis=0).round(1)} m", flush=True)
 
     centers = np.array([-v["T"][:3, :3].T @ v["T"][:3, 3] for v in views if v["cam"] == "image_00"])
@@ -337,6 +412,8 @@ def main():
         v["view"] = torch.tensor(v["T"], dtype=torch.float32, device=DEV)[None]
         v["K"] = torch.tensor(v["K_np"], dtype=torch.float32, device=DEV)[None]
         v["radial"] = torch.tensor(v["radial_np"], dtype=torch.float32, device=DEV)[None]
+        m = masks.get(v["cam"], np.ones((v["h"], v["w"]), np.float32))
+        v["mask"] = torch.from_numpy(m).to(DEV)[..., None]
     test_fids = set(frame_ids[TEST_EVERY - 1::TEST_EVERY]) if TEST_EVERY else set()
     train = [v for v in views if v["fid"] not in test_fids]
     test = [v for v in views if v["fid"] in test_fids]
@@ -358,9 +435,12 @@ def main():
         with torch.no_grad():
             for v in test:
                 pred, _ = render(v)
-                mse = (pred.clamp(0, 1) - gt(v)).square().mean().clamp_min(1e-10)
-                stats.setdefault(v["cam"], []).append(float(-10 * torch.log10(mse)))
-        return {cam: float(np.mean(x)) for cam, x in stats.items()}
+                err = (pred.clamp(0, 1) - gt(v)).square()
+                mse = err.mean().clamp_min(1e-10)
+                mse_m = ((err * v["mask"]).sum() / (v["mask"].sum() * 3).clamp_min(1)).clamp_min(1e-10)
+                stats.setdefault(v["cam"], []).append((float(-10 * torch.log10(mse)), float(-10 * torch.log10(mse_m))))
+        return {cam: {"full": float(np.mean([a for a, _ in x])), "masked": float(np.mean([b for _, b in x]))}
+                for cam, x in stats.items()}
 
     def export(tag):
         with torch.no_grad():
@@ -383,7 +463,10 @@ def main():
         progress = step / max(1, STEPS - 1)
         optimizers["means"].param_groups[0]["lr"] = lrs["means"] * (0.01 ** progress)
         pred, info = render(v)
-        loss = (pred - gt(v)).abs().mean()
+        target, m = gt(v), v["mask"]
+        loss = ((pred - target).abs() * m).sum() / (m.sum() * 3).clamp_min(1)
+        if USE_SSIM:
+            loss = 0.8 * loss + 0.2 * (1 - ssim_fn(pred * m, target * m))
         loss = loss + 0.01 * params["opacities"].sigmoid().mean() + 0.01 * params["scales"].exp().mean()
         loss.backward()
         radii = info["radii"]
@@ -394,7 +477,7 @@ def main():
         strategy.step_post_backward(params, optimizers, state, step, info,
                                     lr=optimizers["means"].param_groups[0]["lr"])
         with torch.no_grad():
-            params["scales"].clamp_(np.log(0.005), np.log(0.5))
+            params["scales"].clamp_(np.log(0.005), np.log(MAX_SCALE))
         if step == 0 or (step + 1) % 500 == 0:
             rate = (step + 1 - start_step) / (time.perf_counter() - t0)
             print(f"step {step + 1}/{STEPS} loss={loss.item():.4f} gaussians={len(params['means'])} "
@@ -422,8 +505,8 @@ def main():
             sync(OUT / f"compare_{cam}.png")
     (OUT / "metrics.json").write_text(json.dumps({**metrics, "config": config}, indent=2))
     sync(OUT / "metrics.json")
-    if Path("/content/train.log").exists():
-        shutil.copyfile("/content/train.log", OUT / "train.log")
+    if Path(LOG_PATH).exists():
+        shutil.copyfile(LOG_PATH, OUT / "train.log")
         sync(OUT / "train.log")
     print(f"[DONE] {metrics['train_seconds']:.0f}s | held-out PSNR {metrics['psnr_per_camera']}", flush=True)
     print("[OUT]", OUT, flush=True)
