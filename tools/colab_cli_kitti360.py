@@ -496,7 +496,8 @@ def main():
         if step == 0 or (step + 1) % 500 == 0:
             rate = (step + 1 - start_step) / (time.perf_counter() - t0)
             print(f"step {step + 1}/{STEPS} loss={loss.item():.4f} gaussians={len(params['means'])} "
-                  f"visible={int(visible.sum())} {rate:.1f} it/s", flush=True)
+                  f"visible={int(visible.sum())} {rate:.1f} it/s "
+                  f"peak_vram={torch.cuda.max_memory_allocated() / 2**30:.2f}GiB", flush=True)
             log.append(dict(step=step + 1, loss=loss.item(), gaussians=len(params["means"])))
         if CKPT_EVERY and (step + 1) % CKPT_EVERY == 0 and step + 1 < STEPS:
             save_ckpt(step + 1)
