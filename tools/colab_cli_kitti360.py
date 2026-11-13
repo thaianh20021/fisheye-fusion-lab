@@ -4,9 +4,9 @@
 - Gaussians initialised from LiDAR, colours sampled from the camera that saw the scan.
 - gsplat rasterization with 3DGUT (with_ut + with_eval3d) so fisheye is rendered exactly.
 - Fast3DGS-style SelectiveAdam: only Gaussians visible in the current view are updated.
-- gsplat DefaultStrategy: densification (clone/split) and pruning.
+- gsplat MCMCStrategy: relocation of dead Gaussians and growth to a cap (no 2D gradients needed).
 
-Env: KITTI360_N_FRAMES (100), KITTI360_STEPS (20000), KITTI360_MAX_GAUSSIANS (120000),
+Env: KITTI360_N_FRAMES (100), KITTI360_STEPS (20000), KITTI360_MAX_GAUSSIANS (120000), KITTI360_CAP_MAX (250000),
      KITTI360_TEST_EVERY (10), KITTI360_ARCHIVE, KITTI360_OUT (/content/kitti360_cli_out).
 """
 import json
@@ -26,7 +26,7 @@ import torch
 from scipy.spatial import cKDTree
 from gsplat import rasterization
 from gsplat.optimizers import SelectiveAdam
-from gsplat.strategy import DefaultStrategy
+from gsplat.strategy import MCMCStrategy
 
 BASE = "https://huggingface.co/datasets/danny042/KITTI-360-fisheye/resolve/main"
 POSES_URL = ("https://s3.eu-central-1.amazonaws.com/avg-projects/KITTI-360/"
@@ -38,6 +38,7 @@ OUT = Path(os.environ.get("KITTI360_OUT", "/content/kitti360_cli_out"))
 N_FRAMES = int(os.environ.get("KITTI360_N_FRAMES", "100"))
 STEPS = int(os.environ.get("KITTI360_STEPS", "20000"))
 MAX_GAUSSIANS = int(os.environ.get("KITTI360_MAX_GAUSSIANS", "120000"))
+CAP_MAX = int(os.environ.get("KITTI360_CAP_MAX", "250000"))
 TEST_EVERY = int(os.environ.get("KITTI360_TEST_EVERY", "10"))
 SCALE = 2
 CAMERAS = [
@@ -273,10 +274,12 @@ def main():
     lrs = {"means": 1.6e-4 * scene_scale, "quats": 1e-3, "scales": 5e-3, "opacities": 5e-2, "colors": 2.5e-2}
     optimizers = {k: SelectiveAdam([{"params": [params[k]], "lr": lr, "name": k}], eps=1e-15, betas=(0.9, 0.999))
                   for k, lr in lrs.items()}
-    strategy = DefaultStrategy(refine_start_iter=500, refine_stop_iter=int(STEPS * 0.8), refine_every=100,
-                               reset_every=3000, grow_grad2d=2e-4, prune_opa=0.005, verbose=False)
+    # 3DGUT (with_eval3d) never touches means2d, so gradient-based densification (DefaultStrategy)
+    # has nothing to read. MCMC relocates dead Gaussians and grows towards cap_max instead.
+    strategy = MCMCStrategy(cap_max=CAP_MAX, refine_start_iter=500, refine_stop_iter=int(STEPS * 0.8),
+                            refine_every=100, min_opacity=0.005, verbose=False)
     strategy.check_sanity(params, optimizers)
-    state = strategy.initialize_state(scene_scale=scene_scale)
+    state = strategy.initialize_state()
 
     # ---- Move images to the GPU as uint8 (400 views of 100 frames fit on a T4).
     for v in views:
@@ -323,15 +326,16 @@ def main():
         progress = step / max(1, STEPS - 1)
         optimizers["means"].param_groups[0]["lr"] = lrs["means"] * (0.01 ** progress)
         pred, info = render(v)
-        strategy.step_pre_backward(params, optimizers, state, step, info)
         loss = (pred - gt(v)).abs().mean()
+        loss = loss + 0.01 * params["opacities"].sigmoid().mean() + 0.01 * params["scales"].exp().mean()
         loss.backward()
         radii = info["radii"]
         visible = (radii[0] > 0).all(-1) if radii.ndim == 3 else radii[0] > 0
         for opt in optimizers.values():
             opt.step(visible)
             opt.zero_grad(set_to_none=True)
-        strategy.step_post_backward(params, optimizers, state, step, info, packed=False)
+        strategy.step_post_backward(params, optimizers, state, step, info,
+                                    lr=optimizers["means"].param_groups[0]["lr"])
         with torch.no_grad():
             params["scales"].clamp_(np.log(0.005), np.log(0.5))
         if step == 0 or (step + 1) % 500 == 0:
