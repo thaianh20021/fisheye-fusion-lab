@@ -1,0 +1,20 @@
+{
+  "id": "dummy",
+  "name": "Test backend (no GPU)",
+  "status": "experimental",
+  "requiresCuda": false,
+  "importCheck": ["json"],
+  "logEnv": "DUMMY_LOG",
+  "commands": {
+    "train": {
+      "script": "dummy_train.py",
+      "fixedEnv": { "DUMMY_FIXED": "1" },
+      "outputs": "out",
+      "options": [
+        { "flag": "out", "env": "DUMMY_OUT", "type": "path", "default": "./runs/{run}", "help": "output dir" },
+        { "flag": "steps", "env": "DUMMY_STEPS", "type": "int", "default": 3, "help": "steps" },
+        { "flag": "fail", "env": "DUMMY_FAIL", "type": "bool", "default": false, "help": "exit with an error" }
+      ]
+    }
+  }
+}

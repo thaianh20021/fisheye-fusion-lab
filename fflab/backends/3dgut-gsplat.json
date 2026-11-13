@@ -1,0 +1,239 @@
+{
+  "id": "3dgut-gsplat",
+  "name": "3DGUT on gsplat 1.5.3 (KITTI-360: 2 pinhole + 2 fisheye + LiDAR)",
+  "status": "stable",
+  "requiresCuda": true,
+  "requirements": [
+    "ninja",
+    "jaxtyping",
+    "rich",
+    "scipy",
+    "opencv-python-headless"
+  ],
+  "buildRequirements": [
+    "gsplat==1.5.3"
+  ],
+  "importCheck": [
+    "torch",
+    "gsplat",
+    "cv2",
+    "scipy"
+  ],
+  "accelerators": [
+    "selective-adam",
+    "mcmc",
+    "fused-ssim"
+  ],
+  "logEnv": "KITTI360_LOG",
+  "commands": {
+    "train": {
+      "script": "colab_cli_kitti360.py",
+      "fixedEnv": {
+        "KITTI360_MASK_ONLY": "0",
+        "KITTI360_SSIM_IMPL": "torch"
+      },
+      "outputs": "out",
+      "options": [
+        {
+          "flag": "data",
+          "env": "KITTI360_ARCHIVE",
+          "type": "path",
+          "default": "./kitti360",
+          "help": "KITTI-360 archive root; missing calibration, metadata and poses are downloaded, missing tars are streamed from Hugging Face"
+        },
+        {
+          "flag": "out",
+          "env": "KITTI360_OUT",
+          "type": "path",
+          "default": "./fflab-runs/{run}",
+          "help": "output directory"
+        },
+        {
+          "flag": "run-name",
+          "env": "KITTI360_RUN_NAME",
+          "type": "string",
+          "default": "{run}",
+          "help": "run name (used for sync and resume)"
+        },
+        {
+          "flag": "frames",
+          "env": "KITTI360_N_FRAMES",
+          "type": "int",
+          "default": 100,
+          "help": "consecutive frames of sequence 0003"
+        },
+        {
+          "flag": "steps",
+          "env": "KITTI360_STEPS",
+          "type": "int",
+          "default": 10000,
+          "help": "training steps"
+        },
+        {
+          "flag": "init-gaussians",
+          "env": "KITTI360_MAX_GAUSSIANS",
+          "type": "int",
+          "default": 120000,
+          "help": "Gaussians seeded from LiDAR"
+        },
+        {
+          "flag": "cap",
+          "env": "KITTI360_CAP_MAX",
+          "type": "int",
+          "default": 1000000,
+          "help": "MCMC Gaussian cap"
+        },
+        {
+          "flag": "test-every",
+          "env": "KITTI360_TEST_EVERY",
+          "type": "int",
+          "default": 10,
+          "help": "hold out every Nth frame for evaluation"
+        },
+        {
+          "flag": "mask",
+          "env": "KITTI360_MASK",
+          "type": "bool",
+          "default": true,
+          "help": "ignore the fisheye car hood in the loss"
+        },
+        {
+          "flag": "ssim",
+          "env": "KITTI360_SSIM",
+          "type": "bool",
+          "default": true,
+          "help": "add an SSIM term to the loss"
+        },
+        {
+          "flag": "sky",
+          "env": "KITTI360_SKY",
+          "type": "bool",
+          "default": true,
+          "help": "seed sky Gaussians on a far dome (largest measured gain)"
+        },
+        {
+          "flag": "seed",
+          "env": "KITTI360_SEED",
+          "type": "int",
+          "default": 42,
+          "help": "random seed"
+        },
+        {
+          "flag": "ckpt-every",
+          "env": "KITTI360_CKPT_EVERY",
+          "type": "int",
+          "default": 2500,
+          "help": "checkpoint interval in steps"
+        },
+        {
+          "flag": "sync-dir",
+          "env": "KITTI360_SYNC_DIR",
+          "type": "path",
+          "default": "",
+          "help": "also copy outputs and checkpoints to SYNC_DIR/RUN_NAME (e.g. a Drive folder)"
+        },
+        {
+          "flag": "resume",
+          "env": "KITTI360_RESUME",
+          "type": "bool",
+          "default": false,
+          "help": "continue RUN_NAME from its last checkpoint"
+        }
+      ]
+    },
+    "render": {
+      "script": "render_flythrough.py",
+      "fixedEnv": {},
+      "outputs": "out",
+      "options": [
+        {
+          "flag": "ply",
+          "env": "FLY_PLY",
+          "type": "path",
+          "default": "./fflab-runs/{run}/gaussians.ply",
+          "help": "trained Gaussian PLY"
+        },
+        {
+          "flag": "out",
+          "env": "FLY_OUT",
+          "type": "path",
+          "default": "./fflab-runs/{run}/fly.mp4",
+          "help": "output video"
+        },
+        {
+          "flag": "data",
+          "env": "KITTI360_ARCHIVE",
+          "type": "path",
+          "default": "./kitti360",
+          "help": "KITTI-360 archive root (poses and metadata)"
+        },
+        {
+          "flag": "frames",
+          "env": "FLY_FRAMES",
+          "type": "int",
+          "default": 100,
+          "help": "keyframes along the path"
+        },
+        {
+          "flag": "sub",
+          "env": "FLY_SUB",
+          "type": "int",
+          "default": 10,
+          "help": "interpolated frames per keyframe"
+        },
+        {
+          "flag": "fps",
+          "env": "FLY_FPS",
+          "type": "int",
+          "default": 30,
+          "help": "video frame rate"
+        }
+      ]
+    },
+    "check": {
+      "script": "kitti360_projection_check.py",
+      "fixedEnv": {},
+      "requiresCuda": false,
+      "outputs": "out",
+      "options": [
+        {
+          "flag": "data",
+          "env": "KITTI360_ARCHIVE",
+          "type": "path",
+          "default": "./kitti360",
+          "help": "KITTI-360 archive root"
+        },
+        {
+          "flag": "out",
+          "env": "KITTI360_CHECK_OUT",
+          "type": "path",
+          "default": "./fflab-runs/{run}-check",
+          "help": "output directory for overlays and report"
+        },
+        {
+          "flag": "sequence",
+          "env": "KITTI360_SEQ",
+          "type": "string",
+          "default": "2013_05_28_drive_0003_sync",
+          "help": "KITTI-360 sequence"
+        },
+        {
+          "flag": "offset",
+          "env": "KITTI360_OFFSET",
+          "type": "int",
+          "default": 5,
+          "help": "frame offset for the multi-frame pose check"
+        }
+      ],
+      "importCheck": [
+        "numpy",
+        "cv2"
+      ],
+      "requirements": [
+        "numpy",
+        "opencv-python-headless"
+      ],
+      "buildRequirements": []
+    }
+  }
+}

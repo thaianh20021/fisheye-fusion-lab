@@ -1,0 +1,10 @@
+{
+  "id": "mcmc",
+  "name": "MCMC densification (gsplat MCMCStrategy)",
+  "status": "builtin",
+  "backends": ["3dgut-gsplat"],
+  "description": "Relocates near-transparent Gaussians and grows towards a cap. Required with 3DGUT: with_eval3d produces no 2D gradients, so gradient-based densification cannot run. Always on in 3dgut-gsplat.",
+  "requirements": [],
+  "buildRequirements": [],
+  "env": {}
+}

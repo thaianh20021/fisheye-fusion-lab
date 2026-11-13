@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Stand-in for google-colab-cli: 'remote' paths are local paths, exec runs python locally."""
+import json, os, shutil, subprocess, sys
+state = os.path.join(os.environ["FAKE_COLAB_STATE"], "sessions.json")
+sessions = json.load(open(state)) if os.path.exists(state) else []
+args = sys.argv[1:]
+def opt(name):
+    return args[args.index(name) + 1] if name in args else None
+cmd = args[0] if args else "--help"
+pos = [a for i, a in enumerate(args[1:], 1) if not a.startswith("-") and not args[i - 1] in ("-s", "--timeout", "-f", "--gpu")]
+if cmd == "--help":
+    print("fake colab")
+elif cmd == "sessions":
+    print("\n".join(f"[{s}] fake | Hardware: CPU" for s in sessions) or "[colab] No active sessions found on server.")
+elif cmd == "new":
+    sessions.append(opt("-s")); json.dump(sessions, open(state, "w")); print("[colab] Session READY.")
+elif cmd in ("upload", "download"):
+    src, dst = pos
+    if cmd == "upload" and not os.path.isdir(os.path.dirname(dst)):
+        print("[colab] Upload failed: 500 Server Error: Internal Server Error"); sys.exit(1)
+    os.makedirs(os.path.dirname(dst) or ".", exist_ok=True); shutil.copyfile(src, dst)
+    print(f"[colab] {cmd}ed")
+elif cmd == "exec":
+    r = subprocess.run([sys.executable, opt("-f")], capture_output=True, text=True)
+    sys.stdout.write(r.stdout + r.stderr)
+elif cmd == "stop":
+    sessions.remove(opt("-s")); json.dump(sessions, open(state, "w")); print("[colab] Session terminated.")

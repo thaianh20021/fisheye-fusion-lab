@@ -48,6 +48,7 @@ RESUME = os.environ.get("KITTI360_RESUME", "0") == "1"   # continue RUN_NAME fro
 CKPT_EVERY = int(os.environ.get("KITTI360_CKPT_EVERY", "2500"))
 USE_MASK = os.environ.get("KITTI360_MASK", "1") == "1"    # ignore the car hood / outside the fisheye circle
 USE_SSIM = os.environ.get("KITTI360_SSIM", "0") == "1"    # loss = 0.8 L1 + 0.2 (1 - SSIM)
+SSIM_IMPL = os.environ.get("KITTI360_SSIM_IMPL", "auto")  # auto | fused | torch (fused = fused-ssim CUDA kernel)
 USE_SKY = os.environ.get("KITTI360_SKY", "0") == "1"      # seed large Gaussians on a far sky dome
 MASK_ONLY = os.environ.get("KITTI360_MASK_ONLY", "0") == "1"
 PERSIST = float(os.environ.get("KITTI360_PERSIST", "0.5"))   # edge persistence above which a lower-image edge is static
@@ -196,6 +197,20 @@ def static_masks(views):
         sync(OUT / f"mask_{cam}.png")
         print(f"[MASK] {cam}: supervising {masks[cam].mean() * 100:.0f}% of pixels", flush=True)
     return masks
+
+
+def make_ssim():
+    """Pick the SSIM kernel: the fused-ssim CUDA package when installed (accelerator), else conv2d."""
+    if SSIM_IMPL in ("auto", "fused"):
+        try:
+            from fused_ssim import fused_ssim
+            print("[ACCEL] SSIM: fused-ssim", flush=True)
+            return lambda a, b: fused_ssim(a.permute(2, 0, 1)[None], b.permute(2, 0, 1)[None])
+        except ImportError:
+            if SSIM_IMPL == "fused":
+                raise
+    print("[ACCEL] SSIM: torch conv2d", flush=True)
+    return ssim_fn
 
 
 def ssim_fn(a, b, win=11, sigma=1.5):
@@ -455,6 +470,7 @@ def main():
         os.replace(tmp, path)
         sync(path)
 
+    ssim_op = make_ssim() if USE_SSIM else None
     t0 = time.perf_counter()
     log = []
     for step in range(start_step, STEPS):
@@ -465,7 +481,7 @@ def main():
         target, m = gt(v), v["mask"]
         loss = ((pred - target).abs() * m).sum() / (m.sum() * 3).clamp_min(1)
         if USE_SSIM:
-            loss = 0.8 * loss + 0.2 * (1 - ssim_fn(pred * m, target * m))
+            loss = 0.8 * loss + 0.2 * (1 - ssim_op(pred * m, target * m))
         loss = loss + 0.01 * params["opacities"].sigmoid().mean() + 0.01 * params["scales"].exp().mean()
         loss.backward()
         radii = info["radii"]

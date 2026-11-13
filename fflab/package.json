@@ -1,0 +1,26 @@
+{
+  "name": "fflab",
+  "version": "0.1.0",
+  "description": "Fisheye Fusion Lab CLI: set up, train, render and run 3D Gaussian reconstruction backends locally (Linux, Windows, headless servers) or on Google Colab.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "fflab": "bin/fflab.js"
+  },
+  "engines": {
+    "node": ">=18.3"
+  },
+  "files": [
+    "bin",
+    "src",
+    "backends",
+    "accelerators",
+    "python",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/unit.test.js test/integration.test.js",
+    "sync-python": "node scripts/sync-python.js",
+    "prepack": "node scripts/sync-python.js"
+  }
+}

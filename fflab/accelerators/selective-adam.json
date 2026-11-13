@@ -1,0 +1,10 @@
+{
+  "id": "selective-adam",
+  "name": "SelectiveAdam (Fast3DGS-style sparse updates)",
+  "status": "builtin",
+  "backends": ["3dgut-gsplat"],
+  "description": "Adam step applied only to Gaussians visible in the current view (gsplat.optimizers.SelectiveAdam). Always on in 3dgut-gsplat.",
+  "requirements": [],
+  "buildRequirements": [],
+  "env": {}
+}

@@ -1,0 +1,11 @@
+{
+  "id": "fused-ssim",
+  "name": "fused-ssim (CUDA SSIM kernel)",
+  "status": "experimental",
+  "backends": ["3dgut-gsplat"],
+  "description": "Replaces the conv2d SSIM, which made training about 4x slower in the ablation runs. Speed-up and numerical match not yet measured on this project.",
+  "requirements": [],
+  "buildRequirements": ["git+https://github.com/rahul-goel/fused-ssim"],
+  "importCheck": ["fused_ssim"],
+  "env": { "KITTI360_SSIM_IMPL": "fused" }
+}

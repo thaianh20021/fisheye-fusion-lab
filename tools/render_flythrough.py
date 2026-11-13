@@ -4,7 +4,7 @@ Camera path = the CAM_FRONT poses of the training frames, smoothed with a cubic 
 (position) and slerp (rotation). Intrinsics are the original full-resolution CAM_FRONT ones,
 so every pixel is inside the field of view the model was trained on.
 
-Needs /content/colab_cli_kitti360.py next to it (reuses its pose/metadata loaders).
+Needs colab_cli_kitti360.py next to it, or FLY_TRAINER (reuses its pose/metadata loaders).
 Env: FLY_PLY, FLY_OUT, FLY_FRAMES (100), FLY_SUB (10 interpolated frames per step), FLY_FPS (30),
      KITTI360_ARCHIVE (Drive archive holding data_poses.zip and the metadata pickles).
 """
@@ -30,7 +30,8 @@ SUB = int(os.environ.get("FLY_SUB", "10"))
 FPS = int(os.environ.get("FLY_FPS", "30"))
 os.environ.setdefault("KITTI360_ARCHIVE", "/content/drive/MyDrive/datasets/kitti360_full")
 
-spec = importlib.util.spec_from_file_location("trainer", "/content/colab_cli_kitti360.py")
+TRAINER = os.environ.get("FLY_TRAINER", str(Path(__file__).resolve().with_name("colab_cli_kitti360.py")))
+spec = importlib.util.spec_from_file_location("trainer", TRAINER)
 trainer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(trainer)
 
