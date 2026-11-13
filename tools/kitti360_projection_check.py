@@ -25,6 +25,7 @@ import os
 import pickle
 import re
 import tarfile
+import urllib.request
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -32,6 +33,9 @@ import cv2
 import numpy as np
 
 ARCHIVE = Path(os.environ.get("KITTI360_ARCHIVE", "/content/drive/MyDrive/datasets/kitti360_full"))
+HF = "https://huggingface.co/datasets/danny042/KITTI-360-fisheye/resolve/main"
+POSES_URL = ("https://s3.eu-central-1.amazonaws.com/avg-projects/KITTI-360/"
+             "89a6bae3c8a6f789e12de4807fc1e8fdcf182cf4/data_poses.zip")
 SEQ = os.environ.get("KITTI360_SEQ", "2013_05_28_drive_0003_sync")
 OUT = Path(os.environ.get("KITTI360_CHECK_OUT", "/content/kitti360_projection_check"))
 OFFSET = int(os.environ.get("KITTI360_OFFSET", "5"))
@@ -203,9 +207,39 @@ def overlay(bgr, uv, valid, depth, title):
 
 
 # ----------------------------------------------------------------------- data
+def fetch(url):
+    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=120)
+
+
+def ensure_small_files():
+    """Download calibration, metadata and poses into ARCHIVE when missing (no Drive needed)."""
+    wanted = [f"calibration/{n}" for n in ("calib_cam_to_pose.txt", "calib_cam_to_velo.txt",
+                                           "perspective.txt", "image_02.yaml", "image_03.yaml")]
+    wanted.append("ImageSets-rosa-6class/kitti360_rosa_infos_val.pkl")
+    for rel in wanted:
+        dst = ARCHIVE / rel
+        if not (dst.exists() and dst.stat().st_size > 0):
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            with fetch(f"{HF}/{rel}") as src, dst.open("wb") as out:
+                out.write(src.read())
+            print("[DL]", rel, dst.stat().st_size, "bytes")
+    dst = ARCHIVE / "data_poses.zip"
+    if not (dst.exists() and dst.stat().st_size > 0):
+        with fetch(POSES_URL) as src, dst.open("wb") as out:
+            out.write(src.read())
+        print("[DL] data_poses.zip", dst.stat().st_size, "bytes")
+
+
 def tar_members(tar_path, suffix, stems):
+    """Read members from a local tar, or stream them from Hugging Face when it is missing."""
     out, names = {}, {}
-    with tarfile.open(tar_path, "r:*") as tar:
+    tar_path = Path(tar_path)
+    if tar_path.exists():
+        source, mode = tar_path.open("rb"), "r:*"
+    else:
+        source, mode = fetch(f"{HF}/{tar_path.relative_to(ARCHIVE).as_posix()}"), "r|*"
+        print("[STREAM]", tar_path.name)
+    with source, tarfile.open(fileobj=source, mode=mode) as tar:
         for m in tar:
             if m.isfile() and m.name.endswith(suffix) and Path(m.name).stem in stems:
                 out.setdefault(Path(m.name).stem, tar.extractfile(m).read())
@@ -227,6 +261,7 @@ def read_cam0_to_world():
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    ensure_small_files()
     report = {"seq": SEQ}
     official_cal, rect0_from_velo = read_official_calibration(ARCHIVE / "calibration")
 

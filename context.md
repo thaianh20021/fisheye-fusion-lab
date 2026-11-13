@@ -101,6 +101,18 @@ Downloaded local artifacts:
 7. Colab CLI sessions occasionally disappear with `404/401` or return `Service Unavailable`.
 8. The latest desired front-road rerun was blocked because the T4 session was lost while restarting.
 
+## Projection Check Result (2026-11-13, seq 0003, frame 12 -> 17)
+
+Run on a Colab CPU VM with `tools/kitti360_projection_check.py` (it downloads calibration/pkl/poses and streams the needed frames from Hugging Face, so Drive is not required).
+
+- Pinhole `image_00`/`image_01`: LiDAR overlay matches building, poles and car. Trainer chain B equals official chain A (median 0.0005 px).
+- Multi-frame world chain C (frame 12 LiDAR re-projected into frame 17) is identical for the trainer pose chain and the documented `cam0_to_world @ rect0_from_velo` chain, and the overlay stays aligned. The pose convention is correct.
+- Fisheye `image_02`/`image_03`: the LiDAR band lines up with the horizon and ground. The equidistant fit used by the trainer differs from exact Mei by under 0.002 px. The official chain draws extra points beyond 90 degrees; the trainer drops them (theta < pi/2) because the fisheye FOV exceeds 180 degrees.
+- Edge-ratio is not reliable for fisheye (black mask, near-uniform depth rows); judge fisheye by the overlays.
+- Drive for the account used in the check has only `datasets/kitti360_archive/calibration.zip`, not `kitti360_full`.
+
+Conclusion: geometry is not the cause of low PSNR. Known problems 1-3 and 6 (colors, densification, Gaussian count) are the next work.
+
 ## Next Technical Gate
 
 Do not increase training steps yet. First run a projection sanity check:
