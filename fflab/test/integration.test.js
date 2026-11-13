@@ -72,3 +72,13 @@ test('fflab train refuses to start without a usable CUDA GPU and points to Colab
   assert.equal(r.status, 1);
   assert.match(r.stderr, /needs a CUDA GPU.*fflab colab train/s);
 });
+
+test('fflab train puts the Python directory first on PATH (so a venv\'s ninja is found)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fflab-path-'));
+  const r = fflab(['train', '--backend', 'dummy', '--steps', '1', '--run-name', 'p1', '--out', path.join(tmp, 'out')],
+    { FFLAB_PLUGINS_DIR: path.join(fixtures, 'plugins'), FFLAB_SCRIPTS_DIR: path.join(fixtures, 'scripts'), HOME: tmp, USERPROFILE: tmp }, tmp);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const m = r.stdout.match(/PATHHEAD (\S+) PYDIR (\S+)/);
+  assert.ok(m, r.stdout);
+  assert.equal(fs.realpathSync(m[1]), fs.realpathSync(path.dirname(spawnSync('python3', ['-c', 'import sys;print(sys.executable)'], { encoding: 'utf8' }).stdout.trim())));
+});

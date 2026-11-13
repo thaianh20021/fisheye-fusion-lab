@@ -35,8 +35,8 @@ POSES_URL = ("https://s3.eu-central-1.amazonaws.com/avg-projects/KITTI-360/"
              "89a6bae3c8a6f789e12de4807fc1e8fdcf182cf4/data_poses.zip")
 SEQ = "2013_05_28_drive_0003_sync"
 ARCHIVE = Path(os.environ.get("KITTI360_ARCHIVE", "/content/kitti360_min"))
-ROOT = Path("/content/kitti360_cli")
 OUT = Path(os.environ.get("KITTI360_OUT", "/content/kitti360_cli_out"))
+ROOT = OUT / "work"   # scratch space inside the output directory: always writable, not Colab-specific
 N_FRAMES = int(os.environ.get("KITTI360_N_FRAMES", "100"))
 STEPS = int(os.environ.get("KITTI360_STEPS", "20000"))
 MAX_GAUSSIANS = int(os.environ.get("KITTI360_MAX_GAUSSIANS", "120000"))

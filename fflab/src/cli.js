@@ -232,7 +232,10 @@ async function cmdRunLocal(reg, command, argv) {
     }
   }
   say('');
-  const code = await runStreaming(py.cmd, [...py.args, script], { env: plan.env, logFile: plan.logFile });
+  // A venv is run by absolute path, never activated; its bin/Scripts dir must still be on PATH so that
+  // build tools installed in it (ninja, for gsplat's JIT compile) are found.
+  const env = { ...plan.env, PATH: `${path.dirname(py.executable)}${path.delimiter}${process.env.PATH || ''}` };
+  const code = await runStreaming(py.cmd, [...py.args, script], { env, logFile: plan.logFile });
   say(code === 0 ? `\nfinished. outputs: ${plan.outputs}` : `\nfailed with exit code ${code}. log: ${plan.logFile || 'terminal'}`);
   return code;
 }
