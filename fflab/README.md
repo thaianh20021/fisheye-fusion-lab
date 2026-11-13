@@ -107,6 +107,8 @@ npm test
 
 Test gồm phần đơn vị, một lần chạy `fflab check` thật trên archive KITTI-360 giả lập (chỉ cần CPU), và toàn bộ quy trình `fflab colab` trên một bản `colab` giả (`test/fixtures/fake-colab`).
 
+Đã chạy thật trên Colab: `fflab colab check` (VM CPU) và `fflab colab train --accel fused-ssim` (T4, 100 frame, 10.000 bước, 215 giây train, PSNR 18,2 / 16,0 dB). Kết quả và so sánh: [docs/kitti360-3dgut.md](../docs/kitti360-3dgut.md).
+
 ## Giới hạn hiện tại
 
 - `fflab train` và `fflab render` chưa chạy thử trên máy GPU cục bộ; chúng gọi đúng các script đã chạy trên Colab T4.

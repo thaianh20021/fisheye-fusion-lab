@@ -17,63 +17,51 @@ NeRF methods are currently out of scope. Main research direction is 3D Gaussian 
 
 ## Current Local Project
 
-Workspace:
+Workspace (user's machine):
 
 `C:\Users\ADMIN\Documents\Codex\2026-11-02\reconstructing-real-world-driving-scenes-using`
 
+GitHub: `thaianh20021/fisheye-fusion-lab`, branch `main`.
+
 Important files:
 
-- `README.md`: project overview and local CLI.
-- `research_summary.md`: earlier Vietnamese research summary.
-- `bao_cao_chi_tiet.md`: detailed research report.
-- `tools/colab_cli_kitti360.py`: Colab trainer.
-- `tools/colab_download_kitti360_full.py`: resumable KITTI-360 downloader.
-- `tools/download_kitti_poses.py`: official pose archive downloader.
-- `tools/kitti360_3dgut_fast3dgs_colab.ipynb`: repeatable Colab notebook.
-- `tools/prepare_small_scene.py`: small local static scene preparation.
-- `tools/train_small_gs.py`: local small Gaussian experiment.
+- `README.md`: project overview, quick start, layout.
+- `docs/kitti360-3dgut.md`: KITTI-360 3DGUT pipeline, results, limitations, next steps.
+- `fflab/`: Node.js CLI (setup, train, render, check, Colab runner); `fflab/README.md` (Vietnamese).
+- `tools/colab_cli_kitti360.py`: trainer (env-driven; MCMC, mask, SSIM, sky, sync, resume).
+- `tools/render_flythrough.py`: fly-through video from a PLY.
+- `tools/kitti360_projection_check.py`: LiDAR-to-camera projection check.
+- `tools/kitti360_3dgut_fast3dgs_colab.ipynb`: notebook version of the same pipeline.
+- `tools/colab_download_kitti360_full.py`, `tools/download_kitti_poses.py`: dataset downloaders.
+- `tools/prepare_small_scene.py`, `tools/train_small_gs.py`: earlier small local experiment.
+- `research_summary.md`, `bao_cao_chi_tiet.md`: research reports (Vietnamese).
 
 ## Colab Dataset
 
-Full archive target:
+Only sequence `2013_05_28_drive_0003_sync` is needed (about 1.7 GB: 4 camera tars + 1 LiDAR tar),
+plus calibration, `ImageSets-rosa-6class/kitti360_rosa_infos_{val,train}.pkl` and `data_poses.zip`.
+The trainer downloads missing small files and streams missing tars from the Hugging Face mirror,
+reading only up to the frames it needs, so a Drive copy is optional.
 
-`/content/drive/MyDrive/datasets/kitti360_full`
-
-The archive contains the KITTI-360 camera/LiDAR tar files, calibration, metadata, and:
-
-`data_poses.zip`
-
-The pose archive contains official files such as:
-
-`2013_05_28_drive_0003_sync/cam0_to_world.txt`
-
-The notebook checks every required file. Existing files are skipped. Missing files are downloaded. Partial files use `.part` and resume when possible.
+Drive copy (second Colab account): `MyDrive/datasets/kitti360_full`; run outputs in
+`MyDrive/datasets/kitti360_fast3dgut_runs/<run>`. The first account's Drive held only `calibration.zip`.
 
 ## Colab Pipeline
 
-Current trainer:
+Current trainer (`tools/colab_cli_kitti360.py`, defaults as used by `fflab`):
 
-- Sequence: `2013_05_28_drive_0003_sync`.
-- Cameras: `image_00`, `image_01`, `image_02`, `image_03`.
-- `image_00`/`image_01`: pinhole.
-- `image_02`/`image_03`: fisheye.
-- LiDAR: real Velodyne scans.
-- Pose: official KITTI-360 `cam0_to_world.txt`.
-- Renderer: `gsplat` with `with_ut=True`, `with_eval3d=True`, `packed=False`.
-- Optimizer: `SelectiveAdam`.
-- Default test: 30 frames, 15,000 Gaussians, 10,000 steps.
-- Output: `/content/kitti360_cli_out`.
+- Sequence 0003, 100 consecutive frames (12-520, every 5th raw frame), val + train metadata merged.
+- Cameras `image_00`/`image_01` pinhole, `image_02`/`image_03` fisheye (Mei, fitted polynomial).
+- Gaussians seeded from real LiDAR with colours from the observing camera; optional sky dome.
+- gsplat 1.5.3 `with_ut=True`, `with_eval3d=True`, `packed=False`; `SelectiveAdam`; `MCMCStrategy`
+  (cap 1M); `scene_scale` capped at 20 m.
+- Loss: masked L1 + optional 0.2 (1 - SSIM) (`KITTI360_SSIM_IMPL` = torch or fused) + opacity/scale reg.
+- Every 10th frame held out; PSNR reported full-frame and on the supervised region.
+- Checkpoints every 2,500 steps, `KITTI360_SYNC_DIR` copy, `KITTI360_RESUME=1`.
 
-Environment overrides:
+## Earlier Prototype Runs
 
-```python
-os.environ["KITTI360_N_FRAMES"] = "10"
-os.environ["KITTI360_STEPS"] = "1000"
-```
-
-## Verified Runs
-
-Earlier verified runs:
+Prototype trainer (before image colours, densification and the projection check):
 
 - 6 frames, 3,000 steps, ICP poses: held-out fisheye PSNR about `14.88 dB`; geometry had large blobs because scans were merged in local coordinates and scales exploded.
 - Fixed 6-frame run: transformed LiDAR into world coordinates and clamped scales to `0.005..0.30 m`.
@@ -92,14 +80,22 @@ Downloaded local artifacts:
 
 ## Known Problems
 
-1. The minimal trainer does not initialize Gaussian colors from projected images.
-2. It has no real 3DGS densification/pruning schedule.
-3. It optimizes a low-level prototype, not a production 3DGUT/Fast3DGS implementation.
-4. Fisheye Mei calibration is approximated by a polynomial radial model.
-5. Pose/camera convention is not yet validated with a projection overlay.
-6. Six to thirty frames and 15,000 Gaussians are insufficient for a clean road segment.
-7. Colab CLI sessions occasionally disappear with `404/401` or return `Service Unavailable`.
-8. The latest desired front-road rerun was blocked because the T4 session was lost while restarting.
+Resolved:
+
+1. Gaussian colours now come from the observing camera.
+2. Densification: gsplat `MCMCStrategy` (DefaultStrategy is incompatible with 3DGUT).
+3. Pose/camera convention validated with the projection check.
+4. 100 frames and up to 1M Gaussians instead of 6-30 frames and 15k.
+5. Colab session loss: `fflab` runs jobs detached, polls logs, checkpoints to Drive and resumes.
+
+Still open:
+
+1. Renders are blurry; a car on the left smears (moving or parked not yet checked).
+2. Sky is a fake 200 m dome; wrong for large viewpoint changes.
+3. Held-out frames are interleaved with training frames: PSNR measures interpolation only.
+4. Fisheye beyond 90 degrees is not rendered (gsplat limit).
+5. Each configuration ran once; run-to-run noise unknown.
+6. Colab T4 allocation can fail with `Service Unavailable`; switching account worked.
 
 ## Projection Check Result (2026-11-13, seq 0003, frame 12 -> 17)
 
@@ -126,7 +122,7 @@ Each configuration was run once; differences under about 1 dB are not establishe
 | image_03 | 11.0 | 11.1 | 11.2 | 16.0 |
 
 - The sky dome (large Gaussians seeded on a 200 m dome with colours from the images) is the one change that clearly matters.
-- The hood mask did not move PSNR. SSIM helps pinhole a little and makes training about 4x slower.
+- The hood mask did not move PSNR. SSIM helps pinhole a little; the conv2d SSIM makes training about 2.4x slower (482 s vs 197 s), fused-ssim removes most of that.
 - Densification: 3DGUT (`with_eval3d`) gives no means2d gradients, so gsplat `DefaultStrategy` crashes; `MCMCStrategy` is used.
 - Position lr and split thresholds scale with `scene_scale`; it is capped at 20 m (a 500 m trajectory would give lr 0.06).
 - Remaining defects in the fly-through: blur on the sides, a parked or moving car smeared on the left.
@@ -147,51 +143,28 @@ First real T4 run through `fflab colab train --accel fused-ssim` (100 frames, 10
 
 One run each, on different T4 VMs.
 
-## Next Technical Gate
+## Next Steps
 
-Do not increase training steps yet. First run a projection sanity check:
-
-1. Load one official pose.
-2. Transform LiDAR into the front camera.
-3. Project points with the front camera intrinsic.
-4. Overlay projected points on the real image.
-5. Verify road/building alignment.
-
-After alignment is correct:
-
-1. Initialize Gaussian colors from visible image pixels.
-2. Use 30-100 frames.
-3. Use 50k-100k initial Gaussians.
-4. Add densification/pruning.
-5. Train 10k-30k steps.
-6. Export `compare_road.png` and PLY.
+1. Repeat the best configuration (sky + mask + fused-ssim) with 3 seeds to measure noise.
+2. Hold out a contiguous segment for real novel-view evaluation.
+3. Better sky: segmentation + learned background.
+4. Identify and mask or model moving vehicles.
+5. Full-resolution training on T4 if memory allows.
+6. Kaggle fallback; connect `fflab` to the local Web UI.
 
 ## Commands
 
-Local smoke tests:
-
-```powershell
-python -m py_compile tools\colab_cli_kitti360.py
-python -m json.tool tools\kitti360_3dgut_fast3dgs_colab.ipynb > $null
+```bash
+cd fflab && npm test                       # fflab unit + integration tests
+python -m pytest -q                        # Python tests
+node fflab/bin/fflab.js doctor
+node fflab/bin/fflab.js colab check --session fflab-test          # CPU VM is enough
+node fflab/bin/fflab.js colab train --gpu T4 --accel fused-ssim --run-name road1
+node fflab/bin/fflab.js colab render --run-name road1
+node fflab/bin/fflab.js colab logs --run road1                    # re-attach
+node fflab/bin/fflab.js colab stop --session fflab
 ```
 
-Colab CLI:
-
-```powershell
-colab new --session kitti360 --gpu T4
-colab exec -s kitti360 --timeout 1800 --env KITTI360_N_FRAMES=30 --env KITTI360_STEPS=10000 -f tools/colab_cli_kitti360.py
-```
-
-Projection sanity check (run this before the next train):
-
-```powershell
-colab exec -s kitti360 --timeout 900 -f tools/kitti360_projection_check.py
-colab download -s kitti360 /content/kitti360_projection_check/projection_report.json outputs/projection_report.json
-```
-
-It writes `overlay_image_0X.png` and `projection_report.json` to `/content/kitti360_projection_check`.
-Chains: A = official devkit calibration (reference), B = trainer's pkl `lidar2cam`/intrinsics,
-C = frame F LiDAR lifted to world with the trainer pose chain and re-projected into frame F+5.
-Edge ratio near 1.0 means misaligned; above about 1.3 means aligned. B/C must match A before training.
-
-Do not use `!python` in PowerShell. That syntax belongs inside a notebook cell.
+Headless hosts: `uv tool install google-colab-cli --with keyrings.alt` and
+`export PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring`. `google-colab-cli` does not support
+Windows; use WSL there. Do not use `!python` in PowerShell; that syntax belongs in a notebook cell.

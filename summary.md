@@ -14,83 +14,51 @@ Develop a tool combining pinhole and multi-camera fisheye fusion, with LiDAR-ass
 
 ## Current Deliverables
 
-- Local Web UI and CLI in the project.
-- Small local Gaussian experiment.
-- Full KITTI-360 archive workflow on Google Drive.
-- Colab downloader that skips existing files and resumes partial files.
-- Colab notebook:
+- `fflab/`: Node.js CLI (no npm dependencies) to set up, train, render and check locally or on a
+  Colab VM. Backends and accelerators are JSON manifests: `3dgut-gsplat`; `selective-adam` and
+  `mcmc` built in; `fused-ssim` optional.
+- `tools/colab_cli_kitti360.py`: KITTI-360 trainer (4 cameras + LiDAR, 3DGUT, SelectiveAdam, MCMC,
+  sky dome, hood mask, SSIM, checkpoints, Drive sync, resume).
+- `tools/render_flythrough.py`: fly-through video; `tools/kitti360_projection_check.py`: geometry check.
+- `tools/kitti360_3dgut_fast3dgs_colab.ipynb`: notebook version (updated, not re-run end to end).
+- Local Web UI and Python CLI (preview fusion, sampling, KITTI-360 import, small experiments).
+- Documentation: `docs/kitti360-3dgut.md`, `fflab/README.md`, `context.md`.
 
-`tools/kitti360_3dgut_fast3dgs_colab.ipynb`
+## How to Run
 
-- Colab trainer:
-
-`tools/colab_cli_kitti360.py`
-
-## Notebook Workflow
-
-1. Mount Google Drive.
-2. Check and download missing KITTI-360 files.
-3. Check `data_poses.zip`.
-4. Configure frame count and training steps.
-5. Train four cameras: two pinhole and two fisheye.
-6. Export PLY and comparison image.
-
-Recommended first run:
-
-```python
-os.environ["KITTI360_N_FRAMES"] = "10"
-os.environ["KITTI360_STEPS"] = "1000"
+```bash
+node fflab/bin/fflab.js colab train --gpu T4 --accel fused-ssim --run-name road1
+node fflab/bin/fflab.js colab render --run-name road1
+node fflab/bin/fflab.js colab stop
 ```
 
-Research run:
+Only sequence 0003 is needed (about 1.7 GB); missing files are downloaded or streamed.
 
-```python
-os.environ["KITTI360_N_FRAMES"] = "30"
-os.environ["KITTI360_STEPS"] = "10000"
-```
+## What Works
 
-## What Worked
-
-- Full archive stored on Drive.
-- Real LiDAR initialization works.
-- Official KITTI-360 pose archive downloads and parses.
-- `gsplat==1.5.3` works with `packed=False`, `with_ut=True`.
-- Training and PLY export complete on T4 for small subsets.
-- Original giant-blur issue was fixed by transforming every LiDAR scan into world coordinates and clamping Gaussian scales.
+- Projection check: LiDAR overlays align on all four cameras; trainer poses match the official chain.
+- 100-frame, 1M-Gaussian training on a Colab T4 in about 4 minutes (after a one-off 13 min compile).
+- Best held-out PSNR: 18.2 dB pinhole, 16.0 dB fisheye (sky + mask + fused-ssim).
+- Sky dome: +3.5 dB pinhole, +4.9 dB fisheye. fused-ssim: 215 s instead of 487 s, same quality.
+- `fflab colab` verified end to end on a real T4 (train) and CPU VM (check).
 
 ## What Does Not Work Well Yet
 
-The current minimal trainer can complete training but does not yet produce a clean, realistic road segment. Renders are sparse/blob-like, and one pose convention version produced an almost black result.
+- Renders are blurry; a car on the left smears.
+- The sky is a fake dome at 200 m.
+- PSNR measures interpolation between training frames, not new viewpoints.
+- Fisheye beyond 90 degrees is not rendered.
+- Single run per configuration; run-to-run noise unknown.
+- `fflab train` on a local GPU and on Windows not yet tested.
 
-Root causes likely include:
+## Next Steps
 
-- Camera/LiDAR/world transform convention still needs projection-overlay validation.
-- Gaussian colors start from zero rather than image-derived values.
-- No densification or pruning.
-- Too few Gaussians for a road scene.
-- Approximate fisheye radial conversion.
-
-## Required Next Step
-
-Implement a projection diagnostic before another long train:
-
-- Project official-pose LiDAR into `CAM_FRONT`.
-- Save an overlay against the real front image.
-- Confirm the projected road and buildings align.
-
-Only after that should the trainer be upgraded to:
-
-- image-based color initialization,
-- 50k-100k Gaussians,
-- densification/pruning,
-- 30-100 frames,
-- 10k-30k steps.
+1. Three seeds of the best configuration to measure noise.
+2. Contiguous held-out segment for novel-view evaluation.
+3. Better sky (segmentation + learned background); handle moving vehicles.
+4. Full-resolution training; Kaggle fallback; Web UI integration.
 
 ## Current Status
 
-As of 2026-11-13:
-
-- Notebook exists and includes check/download logic.
-- Full dataset remains on Google Drive.
-- Latest T4 restart was blocked by Colab `Service Unavailable`; no dataset loss.
-- The project is at the geometry-validation stage, not yet at final-quality reconstruction.
+As of 2026-11-13: the KITTI-360 3DGUT pipeline and `fflab` are merged on `main`. The project has
+moved from geometry validation to quality improvement.
