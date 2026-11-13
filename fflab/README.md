@@ -63,7 +63,7 @@ fflab colab stop
 4. chỉ cài gói nào còn thiếu;
 5. chạy job ở nền trên VM kèm file log;
 6. đọc log theo từng đoạn, thử lại khi rớt kết nối;
-7. tải kết quả về `./fflab-runs/<run>` (không kèm checkpoint, trừ khi có `--with-ckpt`).
+7. tải kết quả về `./fflab-runs/<run>` (không kèm checkpoint và PLY giữa chừng, trừ khi có `--with-ckpt`).
 
 Ctrl+C chỉ dừng việc theo dõi, job vẫn chạy trên VM; dùng `fflab colab logs` để theo dõi lại.
 
@@ -86,7 +86,7 @@ Danh sách đầy đủ: `fflab help train`.
 | --- | --- | --- |
 | `selective-adam` | có sẵn | chỉ cập nhật Gaussian đang nhìn thấy (kiểu Fast3DGS) |
 | `mcmc` | có sẵn | tăng số Gaussian không cần gradient 2D (bắt buộc với 3DGUT) |
-| `fused-ssim` | thử nghiệm | kernel CUDA thay cho SSIM bằng conv2d (vốn làm train chậm khoảng 4 lần); chưa đo trên dự án này |
+| `fused-ssim` | thử nghiệm | kernel CUDA thay cho SSIM bằng conv2d. Đo một lần trên T4: train 215 s thay vì 487 s, PSNR giữ nguyên |
 
 Bật bằng `--accel id1,id2`. Accelerator có sẵn luôn bật; ghi tên nó chỉ in ra một dòng ghi chú.
 
@@ -110,6 +110,7 @@ Test gồm phần đơn vị, một lần chạy `fflab check` thật trên arch
 ## Giới hạn hiện tại
 
 - `fflab train` và `fflab render` chưa chạy thử trên máy GPU cục bộ; chúng gọi đúng các script đã chạy trên Colab T4.
-- `fused-ssim` chưa chạy thử trên GPU.
+- `fused-ssim` mới đo một lần (một VM T4); chưa đo nhiễu giữa các lần chạy.
+- Lần đầu trên mỗi VM, gsplat compile kernel CUDA khoảng 13–15 phút (793 s trong lần đo); it/s in ra trong lúc đó bị kéo thấp.
 - `google-colab-cli` không hỗ trợ Windows, nên `fflab colab` trên Windows phải chạy qua WSL.
 - Backend hiện chỉ đọc sequence 0003 của KITTI-360 (giới hạn của trainer).

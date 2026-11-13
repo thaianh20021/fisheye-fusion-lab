@@ -134,6 +134,19 @@ Each configuration was run once; differences under about 1 dB are not establishe
 - Trainer env: `KITTI360_MASK`, `KITTI360_SSIM`, `KITTI360_SKY`, `KITTI360_CAP_MAX`, `KITTI360_SYNC_DIR`, `KITTI360_RUN_NAME`, `KITTI360_RESUME=1`.
 - Colab CLI on a headless host: install `google-colab-cli --with keyrings.alt` and set `PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring`; `colab exec --env` persists in the kernel, so reset flags such as `KITTI360_MASK_ONLY` explicitly.
 
+## fflab CLI and fused-ssim (2026-11-13)
+
+`fflab/` is a Node.js CLI (no npm dependencies, Node 18.3+) that wraps the Python tools: `list`, `doctor`, `setup`, `train`, `render`, `check`, and `colab train|render|check|logs|stop`. Backends and accelerators are JSON manifests in `fflab/backends` and `fflab/accelerators`. See `fflab/README.md`.
+
+First real T4 run through `fflab colab train --accel fused-ssim` (100 frames, 10k steps, 1M cap, mask+SSIM+sky):
+
+| Run | Train time | Held-out PSNR masked (image_00/01/02/03) |
+|---|---|---|
+| abl3, conv2d SSIM | 487 s | 17.6 / 17.6 / 16.2 / 16.0 |
+| fused-ssim | 215 s (1008 s minus 793 s gsplat compile) | 18.2 / 18.2 / 16.0 / 16.0 |
+
+One run each, on different T4 VMs.
+
 ## Next Technical Gate
 
 Do not increase training steps yet. First run a projection sanity check:

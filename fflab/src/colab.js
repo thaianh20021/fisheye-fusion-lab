@@ -89,8 +89,9 @@ export function download(session, remote, local) {
 const pyLiteral = (obj) => JSON.stringify(JSON.stringify(obj));
 
 /** Start `argv` detached on the VM with exactly `env` on top of the kernel's. */
-export async function launchJob(session, { name, root, argv, env }) {
-  const job = { log: `${root}/jobs/${name}.log`, exit: `${root}/jobs/${name}.exit` };
+/** `log` (optional) puts the output where the backend expects its own log, so it is kept with the outputs. */
+export async function launchJob(session, { name, root, argv, env, log }) {
+  const job = { log: log || `${root}/jobs/${name}.log`, exit: `${root}/jobs/${name}.exit` };
   const code = `import json, os, shlex, subprocess, sys, pathlib
 cfg = json.loads(${pyLiteral({ ...job, argv, env })})
 pathlib.Path(cfg['log']).parent.mkdir(parents=True, exist_ok=True)

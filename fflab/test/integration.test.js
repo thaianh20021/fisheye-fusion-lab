@@ -39,6 +39,7 @@ test('fflab colab train: setup, detached job, polling, downloads without checkpo
   assert.ok(fs.existsSync(path.join(tmp, 'local', 'result.json')));
   assert.ok(fs.existsSync(path.join(tmp, 'local', 'sub', 'fly.mp4')));
   assert.ok(!fs.existsSync(path.join(tmp, 'local', 'ckpt.pt')), 'checkpoints are skipped by default');
+  assert.ok(fs.existsSync(path.join(tmp, 'local', 'fflab-train.log')), 'the job log lands where the backend expects it');
 
   const bad = fflab(['colab', 'train', '--backend', 'dummy', '--fail', '--run-name', 'r2', '--remote-root', root,
     '--poll', '0.2', '--skip-setup'], env, tmp);

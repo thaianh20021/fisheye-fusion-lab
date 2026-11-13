@@ -246,7 +246,7 @@ function saveJob(entry) {
 
 async function downloadOutputs(session, plan, localDir, withCkpt) {
   const files = (await remote.listRemote(session, plan.outputs))
-    .filter((f) => withCkpt || !/ckpt\.pt(\.tmp)?$/.test(f.path));
+    .filter((f) => withCkpt || !/(ckpt\.pt|_partial\.ply)(\.tmp)?$/.test(f.path));
   const isFile = files.length === 1 && files[0].path === plan.outputs;
   for (const f of files) {
     const rel = isFile ? path.posix.basename(f.path) : path.posix.relative(plan.outputs, f.path);
@@ -312,7 +312,7 @@ async function cmdColab(reg, sub, argv) {
   }
   say(`> starting ${sub} (detached; Ctrl+C stops watching, not the job)`);
   const job = await remote.launchJob(session, {
-    name: `${plan.run}-${sub}`, root, argv: ['{python}', `${root}/scripts/${plan.script}`], env: plan.env,
+    name: `${plan.run}-${sub}`, root, argv: ['{python}', `${root}/scripts/${plan.script}`], env: plan.env, log: plan.logFile,
   });
   saveJob({ run: plan.run, command: sub, session, job, outputs: plan.outputs });
   const code = await remote.followJob(session, job, { intervalMs: poll });
@@ -322,7 +322,7 @@ async function cmdColab(reg, sub, argv) {
   }
   if (opts.download !== false && plan.outputs) {
     const localDir = path.resolve(opts['download-dir'] || path.join('fflab-runs', plan.run));
-    say(`\n> downloading outputs to ${localDir}${opts['with-ckpt'] ? '' : ' (checkpoints skipped; --with-ckpt to include)'}`);
+    say(`\n> downloading outputs to ${localDir}${opts['with-ckpt'] ? '' : ' (checkpoints and partial PLYs skipped; --with-ckpt to include)'}`);
     const n = await downloadOutputs(session, plan, localDir, opts['with-ckpt']);
     say(`  ${n} file(s)`);
   }
