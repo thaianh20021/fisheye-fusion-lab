@@ -24,6 +24,20 @@ See `docs/reconstruction.md` for the 3D workflow, setup boundaries, and limitati
 
 See `docs/backend_matrix.md` for the Gaussian/feed-forward source registry.
 
+## Large Dataset Policy
+
+The full KITTI-360 archive is intentionally not committed to GitHub. It is
+about 100+ GiB and is stored on Google Drive for Colab reuse. The notebook
+downloads missing files from the public dataset mirror and skips files already
+present:
+
+- Dataset mirror: `https://huggingface.co/datasets/danny042/KITTI-360-fisheye`
+- Official poses: `https://www.cvlibs.net/datasets/kitti-360/`
+- Colab notebook: `tools/kitti360_3dgut_fast3dgs_colab.ipynb`
+
+Run the notebook with a mounted Drive. It checks the archive before downloading
+anything and writes only temporary extracted frames to the Colab runtime.
+
 ## Run
 
 ```powershell
