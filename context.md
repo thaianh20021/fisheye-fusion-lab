@@ -50,7 +50,7 @@ Drive copy (second Colab account): `MyDrive/datasets/kitti360_full`; run outputs
 
 Current trainer (`tools/colab_cli_kitti360.py`, defaults as used by `fflab`):
 
-- Sequence 0003, 100 consecutive frames (12-520, every 5th raw frame), val + train metadata merged.
+- Frame choice: the first run of `--frames` frames whose gaps are at most `--max-gap` (default 5) from `--start-frame`, val + train metadata merged. The sequence-0003 results in this file were trained on frames 12-520, which is the first 100 frames with poses *including gaps* (the sequence has gaps: 12-137, 157, 167 onward). Reproduce them with `--max-gap 1000000`; the new default picks 167-654 instead. The trainer now stores the exact `frame_ids` in `config.json` and `render_flythrough.py` reads them, so a video always follows the frames its model was trained on. (Before this, a video rendered with the new default from an old sequence-0003 model flew a different stretch of road and looked like shards.)
 - Cameras `image_00`/`image_01` pinhole, `image_02`/`image_03` fisheye (Mei, fitted polynomial).
 - Gaussians seeded from real LiDAR with colours from the observing camera; optional sky dome.
 - gsplat 1.5.3 `with_ut=True`, `with_eval3d=True`, `packed=False`; `SelectiveAdam`; `MCMCStrategy`

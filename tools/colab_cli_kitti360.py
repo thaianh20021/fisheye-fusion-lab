@@ -7,7 +7,7 @@
 - gsplat MCMCStrategy: relocation of dead Gaussians and growth to a cap (no 2D gradients needed).
 
 Env: KITTI360_N_FRAMES (100), KITTI360_STEPS (20000), KITTI360_MAX_GAUSSIANS (120000), KITTI360_CAP_MAX (1000000), KITTI360_SYNC_DIR, KITTI360_RUN_NAME, KITTI360_RESUME,
-     KITTI360_TEST_EVERY (10), KITTI360_SEQ, KITTI360_START, KITTI360_ARCHIVE, KITTI360_OUT (/content/kitti360_cli_out).
+     KITTI360_TEST_EVERY (10), KITTI360_SEQ, KITTI360_START, KITTI360_MAX_GAP, KITTI360_ARCHIVE, KITTI360_OUT (/content/kitti360_cli_out).
 """
 import json
 import os
@@ -35,7 +35,7 @@ POSES_URL = ("https://s3.eu-central-1.amazonaws.com/avg-projects/KITTI-360/"
              "89a6bae3c8a6f789e12de4807fc1e8fdcf182cf4/data_poses.zip")
 SEQ = os.environ.get("KITTI360_SEQ", "2013_05_28_drive_0003_sync")
 START = int(os.environ.get("KITTI360_START", "0"))   # first frame id to consider
-MAX_GAP = 5                                          # frames further apart than this break a run
+MAX_GAP = int(os.environ.get("KITTI360_MAX_GAP", "5"))  # frames further apart than this break a run (huge = never)
 ARCHIVE = Path(os.environ.get("KITTI360_ARCHIVE", "/content/kitti360_min"))
 OUT = Path(os.environ.get("KITTI360_OUT", "/content/kitti360_cli_out"))
 ROOT = OUT / "work"   # scratch space inside the output directory: always writable, not Colab-specific
@@ -307,6 +307,9 @@ def main():
     official = read_official_poses()
     items = select_items(all_items, official)
     frame_ids = [x["frame_id"] for x in items]
+    config["frame_ids"] = frame_ids      # the renderer reads this, so video and model always use the same frames
+    (OUT / "config.json").write_text(json.dumps(config, indent=2))
+    sync(OUT / "config.json")
     item_by_frame = {x["frame_id"]: x for x in items}
     wanted = {f"{x:010d}" for x in frame_ids}
     print(f"[DATA] {len(frame_ids)} frames: {frame_ids[0]}..{frame_ids[-1]}", flush=True)

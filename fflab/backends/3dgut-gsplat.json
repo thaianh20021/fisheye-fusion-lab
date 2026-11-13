@@ -60,7 +60,7 @@
           "env": "KITTI360_N_FRAMES",
           "type": "int",
           "default": 100,
-          "help": "consecutive frames of sequence 0003"
+          "help": "number of frames to train on (see --max-gap for how they are chosen)"
         },
         {
           "flag": "sequence",
@@ -75,6 +75,13 @@
           "type": "int",
           "default": 0,
           "help": "first frame id to consider; the first run of --frames consecutive frames with poses from here is used"
+        },
+        {
+          "flag": "max-gap",
+          "env": "KITTI360_MAX_GAP",
+          "type": "int",
+          "default": 5,
+          "help": "frames further apart than this end a run of consecutive frames; use 1000000 to take the first --frames frames with poses regardless of gaps (how runs before 2026-11-13 chose sequence 0003: frames 12-520)"
         },
         {
           "flag": "steps",
@@ -201,6 +208,13 @@
           "type": "int",
           "default": 0,
           "help": "first frame id to consider; the first run of --frames consecutive frames with poses from here is used"
+        },
+        {
+          "flag": "max-gap",
+          "env": "KITTI360_MAX_GAP",
+          "type": "int",
+          "default": 5,
+          "help": "frames further apart than this end a run of consecutive frames; use 1000000 to take the first --frames frames with poses regardless of gaps (how runs before 2026-11-13 chose sequence 0003: frames 12-520)"
         },
         {
           "flag": "sub",

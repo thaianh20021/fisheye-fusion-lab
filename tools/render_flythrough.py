@@ -9,6 +9,7 @@ Env: FLY_PLY, FLY_OUT, FLY_FRAMES (100), FLY_SUB (10 interpolated frames per ste
      KITTI360_ARCHIVE (Drive archive holding data_poses.zip and the metadata pickles).
 """
 import importlib.util
+import json
 import os
 import pickle
 import shutil
@@ -63,7 +64,18 @@ def front_c2w_path():
         p = trainer.ensure_file(f"ImageSets-rosa-6class/kitti360_rosa_infos_{split}.pkl")
         items += pickle.load(p.open("rb"))["data_list"]
     official = trainer.read_official_poses()
-    items = trainer.select_items(items, official)   # the same frames the model was trained on
+    cfg = Path(PLY).with_name("config.json")
+    used = json.loads(cfg.read_text()).get("frame_ids") if cfg.exists() else None
+    if used:                       # exactly the frames the model was trained on
+        by_id = {x["frame_id"]: x for x in items if trainer.SEQ in x["lidar_path"]}
+        missing = [f for f in used if f not in by_id or f not in official]
+        if missing:
+            raise SystemExit(f"config.json lists frames not found in the metadata/poses: {missing[:5]}")
+        items = [by_id[f] for f in used]
+        print(f"[FLY] frames from {cfg.name}: {used[0]}..{used[-1]} ({len(used)})", flush=True)
+    else:                          # older run without frame_ids: repeat the selection (see --max-gap)
+        items = trainer.select_items(items, official)
+        print("[FLY] no frame_ids in config.json; frames re-selected with the trainer's rule", flush=True)
     front0 = np.array(items[0]["images"]["CAM_FRONT"]["lidar2cam"], dtype=np.float64)
     origin = official[items[0]["frame_id"]][:3, 3].copy()
     c2w = []

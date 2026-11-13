@@ -6,10 +6,14 @@ in about 4 minutes on a Colab T4. Geometry and poses are verified; image quality
 
 ## Pipeline
 
-1. **Data.** Sequence `2013_05_28_drive_0003_sync`, 100 consecutive frames (12 to 520, every 5th raw
-   frame, about 500 m). `val.pkl` holds frames 12-282 with poses, `train.pkl` the rest; both are merged.
-   Images are trained at half resolution (pinhole 704x188, fisheye 700x700). Every 10th frame is held
-   out (40 views), 360 views train.
+1. **Data.** Sequence `2013_05_28_drive_0003_sync` (any KITTI-360 sequence via `--sequence`). The results
+   below use the first 100 frames with poses, frames 12 to 520 (about 500 m). This sequence has gaps in its
+   metadata (12-137, 157, then 167 onward), so those frames are not strictly consecutive; the trainer now
+   defaults to a contiguous run (`--max-gap 5`, which would pick 167-654 here) and `--max-gap 1000000`
+   reproduces the 12-520 choice. `val.pkl` holds frames 2-282 of this sequence and `train.pkl` the rest; both
+   are merged. The exact frames are saved in `config.json` and the fly-through renderer reads them. Images are
+   trained at half resolution (pinhole 704x188, fisheye 700x700). Every 10th frame is held out (40 views), 360
+   views train.
 2. **Initialisation.** Each LiDAR point becomes a Gaussian in world coordinates (origin at the first
    frame, z up). Its colour is sampled from the camera that saw it in the same frame; points no camera
    saw are dropped. Up to 120k points; initial scale = mean distance to 3 neighbours.
