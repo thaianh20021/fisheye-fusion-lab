@@ -172,9 +172,11 @@ def save_ply(path, means, quats, scales, opacity, colors):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     ROOT.mkdir(parents=True, exist_ok=True)
-    meta_path = ensure_file("ImageSets-rosa-6class/kitti360_rosa_infos_val.pkl")
-    with meta_path.open("rb") as stream:
-        all_items = pickle.load(stream)["data_list"]
+    all_items = []
+    for split in ("val", "train"):   # val holds frames 12-282 of this sequence, train the rest
+        meta_path = ensure_file(f"ImageSets-rosa-6class/kitti360_rosa_infos_{split}.pkl")
+        with meta_path.open("rb") as stream:
+            all_items += pickle.load(stream)["data_list"]
     official = read_official_poses()
     items = sorted([x for x in all_items if SEQ in x["lidar_path"] and x["frame_id"] in official],
                    key=lambda x: x["frame_id"])[:N_FRAMES]
