@@ -136,4 +136,16 @@ colab new --session kitti360 --gpu T4
 colab exec -s kitti360 --timeout 1800 --env KITTI360_N_FRAMES=30 --env KITTI360_STEPS=10000 -f tools/colab_cli_kitti360.py
 ```
 
+Projection sanity check (run this before the next train):
+
+```powershell
+colab exec -s kitti360 --timeout 900 -f tools/kitti360_projection_check.py
+colab download -s kitti360 /content/kitti360_projection_check/projection_report.json outputs/projection_report.json
+```
+
+It writes `overlay_image_0X.png` and `projection_report.json` to `/content/kitti360_projection_check`.
+Chains: A = official devkit calibration (reference), B = trainer's pkl `lidar2cam`/intrinsics,
+C = frame F LiDAR lifted to world with the trainer pose chain and re-projected into frame F+5.
+Edge ratio near 1.0 means misaligned; above about 1.3 means aligned. B/C must match A before training.
+
 Do not use `!python` in PowerShell. That syntax belongs inside a notebook cell.
