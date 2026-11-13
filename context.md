@@ -113,6 +113,27 @@ Run on a Colab CPU VM with `tools/kitti360_projection_check.py` (it downloads ca
 
 Conclusion: geometry is not the cause of low PSNR. Known problems 1-3 and 6 (colors, densification, Gaussian count) are the next work.
 
+## Ablation Results (2026-11-13, seq 0003, 100 frames, 10k steps, 1M Gaussian cap, T4)
+
+Held-out PSNR (every 10th frame held out; fisheye measured outside the car hood and circle mask).
+Each configuration was run once; differences under about 1 dB are not established.
+
+| Camera | Base | + mask | + SSIM | + sky |
+|---|---|---|---|---|
+| image_00 | 13.4 | 13.2 | 14.1 | 17.6 |
+| image_01 | 13.6 | 13.6 | 14.1 | 17.6 |
+| image_02 | 11.5 | 11.5 | 11.3 | 16.2 |
+| image_03 | 11.0 | 11.1 | 11.2 | 16.0 |
+
+- The sky dome (large Gaussians seeded on a 200 m dome with colours from the images) is the one change that clearly matters.
+- The hood mask did not move PSNR. SSIM helps pinhole a little and makes training about 4x slower.
+- Densification: 3DGUT (`with_eval3d`) gives no means2d gradients, so gsplat `DefaultStrategy` crashes; `MCMCStrategy` is used.
+- Position lr and split thresholds scale with `scene_scale`; it is capped at 20 m (a 500 m trajectory would give lr 0.06).
+- Remaining defects in the fly-through: blur on the sides, a parked or moving car smeared on the left.
+- Outputs per run on Drive: `MyDrive/datasets/kitti360_fast3dgut_runs/<run>/` (gaussians.ply, ckpt.pt, compare_*.png, metrics.json, config.json, fly.mp4).
+- Trainer env: `KITTI360_MASK`, `KITTI360_SSIM`, `KITTI360_SKY`, `KITTI360_CAP_MAX`, `KITTI360_SYNC_DIR`, `KITTI360_RUN_NAME`, `KITTI360_RESUME=1`.
+- Colab CLI on a headless host: install `google-colab-cli --with keyrings.alt` and set `PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring`; `colab exec --env` persists in the kernel, so reset flags such as `KITTI360_MASK_ONLY` explicitly.
+
 ## Next Technical Gate
 
 Do not increase training steps yet. First run a projection sanity check:
