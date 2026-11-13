@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tái dựng cảnh giao thông – Methods & Datasets</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --line:#475569; --hl:#38bdf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:16px 24px; }
+  h1 { margin:0; font-size:22px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
+  #wrap { position:relative; display:grid; grid-template-columns:repeat(4,1fr); gap:48px; padding:16px 24px; }
+  svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .col h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 12px; }
+  .node { position:relative; z-index:1; display:block; width:100%; text-align:left; margin-bottom:14px; padding:12px; border-radius:10px;
+          background:var(--card); color:var(--text); border:2px solid transparent; border-left:5px solid var(--c); cursor:pointer;
+          font:inherit; transition:transform .2s, opacity .2s, border-color .2s; animation:pop .5s backwards; }
+  .node:hover, .node:focus-visible { transform:translateY(-2px); border-color:var(--c); outline:none; }
+  .node b { display:block; font-size:15px; }
+  .node small { color:var(--muted); }
+  .badge { display:inline-block; margin-top:6px; padding:2px 8px; border-radius:99px; font-size:11px; background:#334155; }
+  .badge.run { background:#166534; } .badge.warn { background:#9a3412; } .badge.next { background:#1e40af; }
+  .dim .node:not(.on) { opacity:.25; }
+  path { fill:none; stroke:var(--line); stroke-width:2; stroke-dasharray:6 6; animation:flow 1.2s linear infinite; }
+  path.on { stroke:var(--hl); stroke-width:3; }
+  .dim path:not(.on) { opacity:.1; }
+  #info { margin:0 24px 24px; padding:16px; border-radius:10px; background:var(--card); min-height:90px; }
+  #info h3 { margin:0 0 6px; }
+  #info ul { margin:6px 0 0; padding-left:20px; color:var(--muted); }
+  @keyframes flow { to { stroke-dashoffset:-12; } }
+  @keyframes pop { from { opacity:0; transform:translateY(10px); } }
+  @media (prefers-reduced-motion:reduce) { path, .node { animation:none; } }
+  @media (max-width:900px) { #wrap { grid-template-columns:1fr 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tái dựng cảnh giao thông thực tế — NeRF &amp; 3DGS</h1>
+  <p>Click một node để xem luồng liên quan và chi tiết. Click lại hoặc nhấn Esc để bỏ chọn.</p>
+</header>
+<div id="wrap"><svg id="svg" aria-hidden="true"></svg></div>
+<section id="info" aria-live="polite"><h3>Chọn một node</h3><p>Dữ liệu → Phương pháp → Pipeline → Đánh giá &amp; CARLA.</p></section>
+<script>
+const C = { data:'#f59e0b', gs:'#22c55e', nerf:'#a855f7', pipe:'#38bdf8', out:'#f43f5e' };
+const cols = [
+  ['Datasets', [
+    ['pandaset','PandaSet 001','Pinhole + LiDAR','data','Sẵn sàng','run',['Camera front, LiDAR Pandar64','Dataset smoke test hiện tại','Không có fisheye']],
+    ['kitti','KITTI-360','Pinhole + Fisheye + LiDAR','data','Tiếp theo','next',['Dataset chính cho nhánh fisheye','2 camera fisheye 180°','Dung lượng lớn: chỉ lấy đoạn ngắn']],
+    ['waymo','Waymo Open','Pinhole + LiDAR','data','Tham khảo','',['Cảnh đông xe, đồng bộ tốt','Tải dữ liệu nhiều bước']],
+    ['nuscenes','nuScenes','Pinhole + LiDAR','data','Bổ sung','',['Dataset tham khảo đa cảm biến']],
+  ]],
+  ['Methods', [
+    ['splatad','SplatAD','3DGS · camera + LiDAR · cảnh động','gs','Đang chạy (Colab T4)','run',['Phương pháp chính, chạy trong neurad-studio','Render nhanh, hỗ trợ pinhole/fisheye/LiDAR','Rủi ro: VRAM, lệch phiên bản gsplat/NumPy/Numba']],
+    ['streetgs','Street Gaussians','3DGS · tách xe động','gs','Khảo sát','',['Tách nền tĩnh và từng xe','Fisheye cần kiểm tra/làm phẳng ảnh']],
+    ['fisheyegs','Fisheye-GS','3DGS · phép chiếu fisheye','gs','Khảo sát','',['Sửa phép chiếu trực tiếp cho ảnh mắt cá','Chủ yếu cảnh tĩnh, chưa rõ LiDAR']],
+    ['neurad','NeuRAD','NeRF · baseline','nerf','Đã thử – quá nặng','warn',['Cùng codebase với SplatAD','RTX 3060 Laptop: ETA ~2 ngày','Cần subset nhỏ hoặc GPU cloud']],
+    ['emernerf','EmerNeRF','NeRF · tự tách tĩnh/động','nerf','Khảo sát','',['Không cần 3D bounding box','Train lâu, khó xuất vật thể sang CARLA']],
+  ]],
+  ['Pipelines', [
+    ['pinhole','Pipeline A','Pinhole + LiDAR','pipe','Đang làm','run',['Parser/calibration → đồng bộ camera-LiDAR','Train → render RGB/depth/LiDAR → đánh giá']],
+    ['fisheye','Pipeline B','Fisheye + LiDAR','pipe','Chưa bắt đầu','next',['Kiểm tra mô hình camera fisheye','Native projection vs làm phẳng ảnh','So sánh méo rìa ảnh và hình học']],
+  ]],
+  ['Đánh giá & CARLA', [
+    ['metrics','Đánh giá chung','PSNR · SSIM · LPIPS · Chamfer','out','Tuần 5–6','',['Hình ảnh: PSNR, SSIM, LPIPS','Hình học: depth error, Chamfer','Hiệu năng: thời gian train, VRAM, FPS']],
+    ['carla','CARLA feasibility','NVIDIA NuRec / export asset','out','Khảo sát','next',['3DGS là ứng viên mạnh nhất','Import trực tiếp chưa được chứng minh','Cần chuẩn hóa hệ tọa độ, calibration, timestamp']],
+  ]],
+];
+const edges = [
+  ['pandaset','splatad'],['pandaset','neurad'],['kitti','splatad'],['kitti','fisheyegs'],['kitti','neurad'],
+  ['waymo','streetgs'],['waymo','emernerf'],['nuscenes','emernerf'],
+  ['splatad','pinhole'],['neurad','pinhole'],['streetgs','pinhole'],['emernerf','pinhole'],
+  ['splatad','fisheye'],['fisheyegs','fisheye'],['neurad','fisheye'],
+  ['pinhole','metrics'],['fisheye','metrics'],['pinhole','carla'],['fisheye','carla'],
+];
+const wrap = document.getElementById('wrap'), svg = document.getElementById('svg'), info = document.getElementById('info');
+const meta = {}; let i = 0;
+for (const [title, nodes] of cols) {
+  const col = document.createElement('div'); col.className = 'col';
+  col.innerHTML = `<h2>${title}</h2>`;
+  for (const [id, name, sub, kind, status, cls, details] of nodes) {
+    meta[id] = { name, details };
+    const b = document.createElement('button');
+    b.className = 'node'; b.id = id; b.style.setProperty('--c', C[kind]); b.style.animationDelay = (i++ * 60) + 'ms';
+    b.innerHTML = `<b>${name}</b><small>${sub}</small><br><span class="badge ${cls}">${status}</span>`;
+    b.onclick = () => select(wrap.dataset.sel === id ? null : id);
+    col.append(b);
+  }
+  wrap.append(col);
+}
+function draw() {
+  const r0 = wrap.getBoundingClientRect();
+  svg.innerHTML = edges.map(([a, b]) => {
+    const A = document.getElementById(a).getBoundingClientRect(), B = document.getElementById(b).getBoundingClientRect();
+    const x1 = A.right - r0.left, y1 = A.top + A.height / 2 - r0.top, x2 = B.left - r0.left, y2 = B.top + B.height / 2 - r0.top, m = (x1 + x2) / 2;
+    return `<path data-a="${a}" data-b="${b}" d="M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}"/>`;
+  }).join('');
+  select(wrap.dataset.sel || null);
+}
+// Highlight every node reachable upstream and downstream from the selection.
+function select(id) {
+  wrap.dataset.sel = id || '';
+  wrap.classList.toggle('dim', !!id);
+  document.querySelectorAll('.node, path').forEach(e => e.classList.remove('on'));
+  if (!id) { info.innerHTML = '<h3>Chọn một node</h3><p>Dữ liệu → Phương pháp → Pipeline → Đánh giá &amp; CARLA.</p>'; return; }
+  const on = new Set([id]);
+  for (const dir of [0, 1]) {
+    const stack = [id];
+    while (stack.length) {
+      const n = stack.pop();
+      for (const e of edges) if (e[dir] === n && !on.has(e[1 - dir])) { on.add(e[1 - dir]); stack.push(e[1 - dir]); }
+    }
+  }
+  on.forEach(n => document.getElementById(n).classList.add('on'));
+  svg.querySelectorAll('path').forEach(p => { if (on.has(p.dataset.a) && on.has(p.dataset.b)) p.classList.add('on'); });
+  const m = meta[id];
+  info.innerHTML = `<h3>${m.name}</h3><ul>${m.details.map(d => `<li>${d}</li>`).join('')}</ul>`;
+}
+addEventListener('resize', draw);
+addEventListener('keydown', e => e.key === 'Escape' && select(null));
+setTimeout(draw, 50);
+</script>
+</body>
+</html>

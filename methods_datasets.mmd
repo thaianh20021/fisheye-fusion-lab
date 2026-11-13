@@ -1,0 +1,34 @@
+mindmap
+  root((Tái dựng cảnh giao thông thực tế))
+    Datasets
+      PandaSet 001
+        Pinhole + LiDAR
+        Smoke test hiện tại
+      KITTI-360
+        Pinhole + Fisheye + LiDAR
+        Dataset chính cho fisheye
+      Waymo Open
+        Cảnh đông xe
+      nuScenes
+        Tham khảo bổ sung
+    Methods 3DGS
+      SplatAD
+        Phương pháp chính
+        Đang chạy trên Colab T4
+      Street Gaussians
+        Tách xe động
+      Fisheye-GS
+        Phép chiếu fisheye
+    Methods NeRF
+      NeuRAD
+        Baseline, quá nặng với RTX 3060 Laptop
+      EmerNeRF
+        Tự tách tĩnh/động
+    Pipelines
+      A: Pinhole + LiDAR
+      B: Fisheye + LiDAR
+    Đánh giá & CARLA
+      PSNR / SSIM / LPIPS
+      Chamfer / depth error
+      Thời gian train / VRAM / FPS
+      CARLA qua NVIDIA NuRec

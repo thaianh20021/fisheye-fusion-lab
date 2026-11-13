@@ -1,0 +1,34 @@
+.venv*/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local/runtime state
+.env
+.env.*
+work/
+*.log
+*.part
+
+# Large generated artifacts and CUDA build caches
+outputs/*
+!outputs/.gitkeep
+*.ply
+*.tar
+*.tar.gz
+*.zip
+*.pth
+*.ckpt
+*.pt
+*.bin
+*.o
+*.obj
+*.pyd
+*.lib
+*.exp
+
+# Local machine/editor files
+.vscode/
+.idea/

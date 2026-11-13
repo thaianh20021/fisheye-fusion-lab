@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fisheye Fusion Lab</title><link rel="stylesheet" href="/static/styles.css"><link rel="stylesheet" href="/static/reconstruction.css"><link rel="stylesheet" href="/static/experiment.css"><link rel="stylesheet" href="/static/training.css"></head>
+<body>
+<header><strong>FUSION LAB</strong><span>Local Web UI · CPU preview</span></header>
+<main>
+<aside>
+<h1>Camera workspace</h1>
+<label for="path">Manifest JSON</label><input id="path" placeholder="examples/synthetic_opencv_fisheye/manifest.json">
+<button id="load">Mở project</button><div class="row"><button id="demo">Demo fisheye</button><button id="pinhole">Demo pinhole</button></div>
+<p id="project">Chưa chọn project</p>
+<details><summary>Nhập KITTI-360 local</summary>
+<label for="kittiRoot">Thư mục dataset</label><input id="kittiRoot" placeholder="data/kitti360">
+<label for="kittiSequence">Sequence</label><input id="kittiSequence" placeholder="2013_05_28_drive_0000_sync">
+<label for="kittiFrames">Frame IDs</label><input id="kittiFrames" value="0" placeholder="0, 1, 2, 3">
+<label for="kittiCameras">Camera</label><select id="kittiCameras"><option value="image_02,image_03">2 fisheye</option><option value="image_00,image_01">2 pinhole</option><option value="image_00,image_01,image_02,image_03">2 pinhole + 2 fisheye</option></select>
+<label for="kittiOutput">Thư mục mẫu mới</label><input id="kittiOutput" value="outputs/kitti360-sample">
+<label for="kittiMib">Giới hạn MiB</label><input id="kittiMib" type="number" min="1" max="200" value="50">
+<div class="row"><button id="kittiPlan">Kiểm tra</button><button id="kittiWrite">Nhập mẫu</button></div>
+<output id="kittiResult" aria-live="polite"></output>
+</details>
+<hr><h2>Rig</h2><div id="cameras"></div>
+<label for="frame">Frame <output id="frameValue">0</output></label><input id="frame" type="range" min="0" max="0" value="0">
+<label for="size">Panorama width</label><select id="size"><option>512</option><option selected>1024</option><option>2048</option></select>
+<button id="render" class="primary" disabled>Render panorama</button>
+<hr><h2>Mẫu dữ liệu</h2>
+<label for="sampleOutput">Thư mục mới</label><input id="sampleOutput" value="outputs/sample">
+<label for="sampleFrames">Số frame tối đa</label><input id="sampleFrames" type="number" min="1" max="32" value="4">
+<label for="sampleMib">Giới hạn MiB</label><input id="sampleMib" type="number" min="1" max="200" value="50">
+<label><input id="sampleLidar" type="checkbox"> Kèm LiDAR</label>
+<div class="row"><button id="samplePlan" disabled>Tính dung lượng</button><button id="sampleWrite" disabled>Tạo mẫu</button></div>
+<output id="sampleResult" aria-live="polite"></output>
+<hr><h2>Runtime</h2><dl><dt>GPU</dt><dd id="gpu">checking</dd><dt>Training</dt><dd>Chưa tích hợp</dd><dt>3D inference</dt><dd>Instant NuRec · môi trường riêng</dd></dl>
+<div class="row"><button id="colab" disabled>Export Colab</button><button id="kaggle" disabled>Export Kaggle</button></div>
+<p>CPU preview bundle · không phải job train T4</p>
+</aside>
+<article>
+<section id="localTraining" aria-labelledby="trainingHeading">
+<h2 id="trainingHeading">Huấn luyện local · Rig đã hiệu chuẩn</h2>
+<form id="trainingForm">
+<fieldset id="trainingSettings">
+<legend>Dữ liệu và cấu hình</legend>
+<label for="trainingDataset">Đường dẫn dataset trên máy chủ local</label>
+<input id="trainingDataset" value="examples/real_small_scene/training.npz" required aria-describedby="trainingPathHelp">
+<p id="trainingPathHelp">Nhập đường dẫn local, không tải tệp lên.</p>
+<button id="trainingInspect" type="button">Kiểm tra dataset</button>
+<p id="trainingInspection" role="status"></p>
+<fieldset id="trainingRig" hidden>
+<legend>Camera đã hiệu chuẩn</legend>
+<label for="trainingCameraCount">Số camera trong rig</label>
+<select id="trainingCameraCount"><option value="1">1 camera</option><option value="2">2 camera</option><option value="4">4 camera</option></select>
+<div id="trainingCameras"></div>
+<p id="trainingSelection" role="status"></p>
+</fieldset>
+<label for="trainingSteps">Số bước huấn luyện</label>
+<input id="trainingSteps" type="number" min="1" max="10000" step="1" value="1200" required>
+<button id="trainingStart" type="submit" disabled>Bắt đầu huấn luyện</button>
+</fieldset>
+</form>
+<div class="training-actions"><button id="trainingCancel" type="button" disabled>Dừng huấn luyện</button></div>
+<p id="trainingStatus" role="status">Chưa chạy</p>
+<label for="trainingProgress">Tiến độ huấn luyện</label>
+<progress id="trainingProgress" value="0" max="1200"></progress>
+<p id="trainingError" role="alert"></p>
+<p id="trainingStorage" role="status"></p>
+<pre id="trainingLog" role="log" aria-label="Nhật ký huấn luyện" aria-live="off" tabindex="0"></pre>
+<p id="trainingOutput"></p>
+<div id="trainingPreviews"></div>
+<ul id="trainingArtifacts" aria-label="Tệp kết quả huấn luyện"></ul>
+</section>
+<section id="realExperiment" aria-labelledby="experimentHeading">
+<div class="heading"><h2 id="experimentHeading">Cảnh thật · Static 3DGS</h2><button id="loadExperiment">Mở kết quả đã chạy</button></div>
+<div id="experimentContent" aria-live="polite"></div>
+</section>
+<div class="heading"><div><small>MULTI-CAMERA / CALIBRATED</small><h2 id="title">Rig preview</h2></div><span id="count">0 camera</span></div>
+<div id="message" role="status" aria-live="polite"></div><div id="images" class="images"></div>
+<div class="heading"><h2>Panorama</h2><label><input type="checkbox" id="mask"> coverage mask</label></div>
+<div class="viewport"><img id="panorama" alt="Fused panorama" hidden><div id="empty">Chưa có kết quả render</div></div>
+<div class="metrics"><span>Coverage <b id="coverage">—</b></span><a id="download" hidden download="panorama.png">Tải PNG</a></div>
+<section aria-labelledby="reconstructionHeading" class="reconstruction">
+<div class="heading"><h2 id="reconstructionHeading">Gaussian 3D · Instant NuRec</h2><span id="reconstructionState" role="status">Chưa chạy</span></div>
+<p>NCore + checkpoint local · offline · inference, không phải training</p>
+<div class="reconstruction-fields">
+<div><label for="nurecRepo">Repository local</label><input id="nurecRepo" value="backends/instant-nurec"></div>
+<div><label for="nurecPython">Python của backend</label><input id="nurecPython" value="backends/instant-nurec/.venv/Scripts/python.exe"></div>
+<div><label for="nurecCheckpoint">Checkpoint .pth</label><input id="nurecCheckpoint" placeholder="models/instant_nurec_pa_front_1.1.0.pth"></div>
+<div><label for="nurecInput">NCore sequence .json</label><input id="nurecInput" placeholder="data/ncore/sequence.json"></div>
+<div><label for="nurecModel">Model</label><select id="nurecModel"><option value="pa-front">PA front</option><option value="pa-multiview">PA multiview</option><option value="pq-front">PQ front</option></select></div>
+<div><label for="nurecChunks">Số chunk tối đa</label><input id="nurecChunks" type="number" min="1" max="2" value="1"></div>
+<div><label for="nurecGaussians">Gaussian mục tiêu sau merge</label><input id="nurecGaussians" type="number" min="100000" max="2000000" step="100000" value="200000"></div>
+</div>
+<div class="reconstruction-options"><label><input id="nurecPreview" type="checkbox"> Render PNG (render extra)</label><label><input id="nurecDynamic" type="checkbox"> Dynamic layer</label></div>
+<div class="reconstruction-actions"><button id="nurecCheck">Kiểm tra môi trường</button><button id="nurecStart">Dựng Gaussian 3D</button><button id="nurecCancel" disabled>Dừng job</button><button id="nurecRefresh" disabled>Cập nhật</button></div>
+<pre id="nurecLog" role="log" aria-label="Log Instant NuRec">Chưa kiểm tra môi trường.</pre>
+<div id="nurecArtifacts"></div><img id="nurecRender" alt="Ảnh render Gaussian từ Instant NuRec" hidden>
+<div class="reconstruction-actions"><a href="/api/notebooks/instant-nurec/colab" download>Tải notebook Colab</a><a href="/api/notebooks/instant-nurec/kaggle" download>Tải notebook Kaggle</a></div>
+</section>
+<h2>Backend registry</h2><table><thead><tr><th>Method</th><th>Runtime</th><th>Status</th></tr></thead><tbody id="backends"></tbody></table>
+</article></main><footer id="workspace"></footer><script src="/static/app.js"></script><script src="/static/reconstruction.js"></script><script src="/static/experiment.js"></script><script src="/static/training.js"></script>
+</body></html>

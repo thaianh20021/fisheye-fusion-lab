@@ -1,0 +1,22 @@
+#realExperiment{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:20px 0;margin:8px 0 24px;min-width:0}
+#realExperiment h3{font-size:14px;margin:20px 0 10px}
+#realExperiment .experiment-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:12px}
+#realExperiment .experiment-controls select{width:auto;max-width:100%}
+#realExperiment .experiment-status{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+#realExperiment .experiment-metrics{grid-template-columns:minmax(100px,150px) minmax(0,1fr);gap:8px 16px}
+#realExperiment .experiment-comparison{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0}
+#realExperiment figure{margin:0;min-width:0}
+#realExperiment img{display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:contain;background:#dce7e6}
+#realExperiment img[hidden]{display:none}
+#realExperiment figcaption{font-size:12px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
+#realExperiment .experiment-links{display:flex;flex-wrap:wrap;gap:12px 24px}
+#realExperiment .experiment-links a{overflow-wrap:anywhere}
+#realExperiment input[type=range]{width:100%;margin:8px 0 14px;accent-color:var(--accent)}
+#realExperiment .experiment-novel{max-width:800px}
+#realExperiment .experiment-table{max-width:100%;overflow-x:auto}
+#realExperiment th,#realExperiment td{overflow-wrap:anywhere}
+#realExperiment details{margin-top:20px}
+#realExperiment summary{cursor:pointer;color:var(--accent)}
+#realExperiment .experiment-limitations{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
+#realExperiment :is(a,button,input,select,summary):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:540px){#realExperiment .experiment-comparison{grid-template-columns:1fr}#realExperiment .experiment-metrics{grid-template-columns:100px minmax(0,1fr)}}

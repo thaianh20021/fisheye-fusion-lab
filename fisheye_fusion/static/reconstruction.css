@@ -1,0 +1,11 @@
+.reconstruction{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:20px 0;margin:8px 0 24px}
+.reconstruction>p{color:var(--muted);font-size:12px}
+.reconstruction-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
+.reconstruction-fields>div{min-width:0}
+.reconstruction-options,.reconstruction-actions{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.reconstruction-actions a{padding:10px 0}
+#reconstructionState{font-size:12px;color:var(--warn);overflow-wrap:anywhere}
+#nurecLog{margin:16px 0;padding:12px;background:#e7edec;max-height:260px;min-height:80px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px Consolas,monospace}
+#nurecArtifacts{display:grid;gap:8px;overflow-wrap:anywhere}
+#nurecRender{max-width:100%;height:auto;margin-top:12px}
+@media(max-width:540px){.reconstruction-fields{grid-template-columns:1fr}}

@@ -1,0 +1,315 @@
+{
+  "dataset": "Mip-NeRF 360",
+  "scene": "stump",
+  "repository": "YuanhaoXD/Mip-NeRF360",
+  "revision": "df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22",
+  "upstream": "https://jonbarron.info/mipnerf360/",
+  "citation": "Barron et al., Mip-NeRF 360, CVPR 2022",
+  "license_note": "Mirror declares apache-2.0; consult upstream dataset terms for image rights.",
+  "coordinate_system": "OpenCV world-to-camera: +X right, +Y down, +Z forward",
+  "units": "Original COLMAP reconstruction units; no rescaling or recentering",
+  "selection": "First 12 available registered image IDs, ascending; positions 3 and 8 held out",
+  "point_selection": "Points observed by at least one training image, deterministic cap 20000",
+  "holdout_note": "Photos withheld from training; upstream COLMAP reconstruction used all views.",
+  "images": [
+    {
+      "name": "_DSC9213.JPG",
+      "image_id": 1,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9214.JPG",
+      "image_id": 2,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9215.JPG",
+      "image_id": 3,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9216.JPG",
+      "image_id": 4,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9217.JPG",
+      "image_id": 5,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9218.JPG",
+      "image_id": 6,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9219.JPG",
+      "image_id": 7,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9220.JPG",
+      "image_id": 8,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9222.JPG",
+      "image_id": 9,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9221.JPG",
+      "image_id": 10,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9223.JPG",
+      "image_id": 11,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    },
+    {
+      "name": "_DSC9224.JPG",
+      "image_id": 12,
+      "camera_id": 1,
+      "source_size": [
+        622,
+        413
+      ],
+      "output_size": [
+        400,
+        266
+      ],
+      "undistorted": false
+    }
+  ],
+  "cameras": {
+    "1": {
+      "model": "PINHOLE",
+      "width": 4978,
+      "height": 3300,
+      "parameters": [
+        4528.597703297461,
+        4528.0745533801455,
+        2489.0,
+        1650.0
+      ]
+    }
+  },
+  "point_count": 4334,
+  "train_indices": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    6,
+    7,
+    9,
+    10,
+    11
+  ],
+  "test_indices": [
+    3,
+    8
+  ],
+  "download_limit_bytes": 52428800,
+  "download_budget_charged_bytes": 37416969,
+  "discovery_allowance_bytes": 1048576,
+  "files": {
+    "metadata/sparse_0.json": {
+      "url": "https://huggingface.co/api/datasets/poptree/LLFF/tree/e878badbae7e8120f420b680c9dd24b7ae562d6e/mipnerf360/stump/sparse/0?limit=1000",
+      "bytes": 1264,
+      "sha256": "7d2086c8c8992d2faebd86567515a22d2a489d89f0c41f49d39ae850d2f95027"
+    },
+    "metadata/images_8.json": {
+      "url": "https://huggingface.co/api/datasets/poptree/LLFF/tree/e878badbae7e8120f420b680c9dd24b7ae562d6e/mipnerf360/stump/images_8?limit=1000",
+      "bytes": 39626,
+      "sha256": "3629c39a969e146037c7082cc7a1427361c636e22108adb58f6d48e1549bfa3a"
+    },
+    "metadata/YuanhaoXD_Mip-NeRF360_sparse_0.json": {
+      "url": "https://huggingface.co/api/datasets/YuanhaoXD/Mip-NeRF360/tree/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/sparse/0?limit=1000",
+      "bytes": 914,
+      "sha256": "19f3cdac2f6f4ed5df882ea6a77e3e05dcf80af129c32be46832a1867c23f356"
+    },
+    "metadata/YuanhaoXD_Mip-NeRF360_images_8.json": {
+      "url": "https://huggingface.co/api/datasets/YuanhaoXD/Mip-NeRF360/tree/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8?limit=1000",
+      "bytes": 38251,
+      "sha256": "6ed53b37037cf17f5e9af41752213bd27e21a3c789e5c86d6b439314ab5954d1"
+    },
+    "sparse/0/cameras.bin": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/sparse/0/cameras.bin",
+      "bytes": 64,
+      "sha256": "d9fdb186c02022586779781eb65d78bdacfe3fe9ff694c20c41a4db83b1882a5"
+    },
+    "sparse/0/images.bin": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/sparse/0/images.bin",
+      "bytes": 30521737,
+      "sha256": "cfb445d82380a83fdcc8cc5e3159f43ae8ecfcb9e1b7aa2aa44b824338131df6"
+    },
+    "sparse/0/points3D.bin": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/sparse/0/points3D.bin",
+      "bytes": 2760811,
+      "sha256": "498e63ce55be137101c451ad8f9cd58cc46af8a4e93f911e20f76171ffef96be"
+    },
+    "images_8/_DSC9213.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9213.JPG",
+      "bytes": 254178,
+      "sha256": "b95cbab090deed863e88afb809d552f17e662d83df873051d9cb0f2402a6eb62"
+    },
+    "images_8/_DSC9214.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9214.JPG",
+      "bytes": 261281,
+      "sha256": "ee6852c899dd663d8f8c77145502affda272a400965edc10c06f8516f5d4db6a"
+    },
+    "images_8/_DSC9215.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9215.JPG",
+      "bytes": 262398,
+      "sha256": "519ca97a3d15938841991f10c0949b84e3a5f567ec04632594d2e88fb34839cd"
+    },
+    "images_8/_DSC9216.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9216.JPG",
+      "bytes": 260793,
+      "sha256": "2d3f212878389974e11be3da119ba32984c066040923e8512a02c155653701a6"
+    },
+    "images_8/_DSC9217.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9217.JPG",
+      "bytes": 254880,
+      "sha256": "9f1d2e79c1bad37e65fb7c9ac4bbf1b2d7dbc9166385f07a55e417fd6cda379b"
+    },
+    "images_8/_DSC9218.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9218.JPG",
+      "bytes": 253581,
+      "sha256": "27718fd86f5607ee0502819ab0cb0a87c5657e9062590760d5dc317eb4a7df34"
+    },
+    "images_8/_DSC9219.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9219.JPG",
+      "bytes": 243033,
+      "sha256": "1c2a0b224c60d331884d9d28776d084e1c1a70eef9818cfef202038b71c1c5e8"
+    },
+    "images_8/_DSC9220.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9220.JPG",
+      "bytes": 252007,
+      "sha256": "341a13fde71598f2ed3182c279d586eb62f8e62fc6a923ee6aa2cd0e098f98af"
+    },
+    "images_8/_DSC9222.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9222.JPG",
+      "bytes": 243731,
+      "sha256": "12de729c0b38bec47cb3c10f0fa0990da99eff636111174fc0cae8fc60a58ca4"
+    },
+    "images_8/_DSC9221.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9221.JPG",
+      "bytes": 252151,
+      "sha256": "49bd52eb76f942315f5fb554e3ad7de973a635c798f4f45041d44dc4d57b58ab"
+    },
+    "images_8/_DSC9223.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9223.JPG",
+      "bytes": 233551,
+      "sha256": "dc7c62eaea923c9b066aa7fc4dfaa3af9f1db0f4fabef40e8ea9b32931f46b02"
+    },
+    "images_8/_DSC9224.JPG": {
+      "url": "https://huggingface.co/datasets/YuanhaoXD/Mip-NeRF360/resolve/df31214ab1a3d72e0e4bfa1bfb3c03132b5cbe22/stump/images_8/_DSC9224.JPG",
+      "bytes": 234078,
+      "sha256": "78ce2b74498a9b5552eff1826d50894461eeb0e35cce05650f726487c3f49763"
+    }
+  },
+  "training_npz_sha256": "9f75a733b8ce0e1d9e49da62af274991cb973d2c3b231b4821e83642e71a0bf7"
+}
