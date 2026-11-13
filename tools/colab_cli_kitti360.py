@@ -6,13 +6,14 @@
 - Fast3DGS-style SelectiveAdam: only Gaussians visible in the current view are updated.
 - gsplat MCMCStrategy: relocation of dead Gaussians and growth to a cap (no 2D gradients needed).
 
-Env: KITTI360_N_FRAMES (100), KITTI360_STEPS (20000), KITTI360_MAX_GAUSSIANS (120000), KITTI360_CAP_MAX (250000),
+Env: KITTI360_N_FRAMES (100), KITTI360_STEPS (20000), KITTI360_MAX_GAUSSIANS (120000), KITTI360_CAP_MAX (1000000), KITTI360_SYNC_DIR, KITTI360_RUN_NAME, KITTI360_RESUME,
      KITTI360_TEST_EVERY (10), KITTI360_ARCHIVE, KITTI360_OUT (/content/kitti360_cli_out).
 """
 import json
 import os
 import pickle
 import random
+import shutil
 import tarfile
 import time
 import urllib.request
@@ -38,7 +39,12 @@ OUT = Path(os.environ.get("KITTI360_OUT", "/content/kitti360_cli_out"))
 N_FRAMES = int(os.environ.get("KITTI360_N_FRAMES", "100"))
 STEPS = int(os.environ.get("KITTI360_STEPS", "20000"))
 MAX_GAUSSIANS = int(os.environ.get("KITTI360_MAX_GAUSSIANS", "120000"))
-CAP_MAX = int(os.environ.get("KITTI360_CAP_MAX", "250000"))
+CAP_MAX = int(os.environ.get("KITTI360_CAP_MAX", "1000000"))
+SEED = int(os.environ.get("KITTI360_SEED", "42"))
+RUN_NAME = os.environ.get("KITTI360_RUN_NAME", time.strftime("run_%Y%m%d_%H%M%S"))
+SYNC_DIR = os.environ.get("KITTI360_SYNC_DIR", "")      # e.g. a Drive folder; empty disables syncing
+RESUME = os.environ.get("KITTI360_RESUME", "0") == "1"   # continue RUN_NAME from its last checkpoint
+CKPT_EVERY = int(os.environ.get("KITTI360_CKPT_EVERY", "2500"))
 TEST_EVERY = int(os.environ.get("KITTI360_TEST_EVERY", "10"))
 SCALE = 2
 CAMERAS = [
@@ -153,6 +159,28 @@ def sample_colors(views_of_frame, pts_world):
     return colors, seen
 
 
+# ------------------------------------------------------------------ durable output
+def sync(path):
+    """Copy a finished local file into SYNC_DIR/RUN_NAME atomically (tmp file, size check, rename)."""
+    if not SYNC_DIR:
+        return
+    path = Path(path)
+    dst_dir = Path(SYNC_DIR) / RUN_NAME
+    dst, tmp = dst_dir / path.name, dst_dir / (path.name + ".tmp")
+    for attempt in range(3):
+        try:
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, tmp)
+            if tmp.stat().st_size != path.stat().st_size:
+                raise IOError("size mismatch after copy")
+            os.replace(tmp, dst)
+            return
+        except Exception as exc:  # Drive FUSE can hiccup; training must not die because of it
+            print(f"[SYNC-RETRY] {path.name}: {exc}", flush=True)
+            time.sleep(5)
+    print(f"[SYNC-FAIL] {path.name} (local copy kept in {path.parent})", flush=True)
+
+
 # ------------------------------------------------------------------ export
 def save_ply(path, means, quats, scales, opacity, colors):
     names = ["x", "y", "z", "nx", "ny", "nz", "f_dc_0", "f_dc_1", "f_dc_2", "opacity",
@@ -173,6 +201,16 @@ def save_ply(path, means, quats, scales, opacity, colors):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     ROOT.mkdir(parents=True, exist_ok=True)
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    import gsplat
+    config = dict(run=RUN_NAME, seed=SEED, frames=N_FRAMES, steps=STEPS, cap_max=CAP_MAX,
+                  init_gaussians=MAX_GAUSSIANS, test_every=TEST_EVERY, image_scale=SCALE,
+                  torch=torch.__version__, gsplat=gsplat.__version__, resume=RESUME,
+                  gpu=torch.cuda.get_device_name(0))
+    (OUT / "config.json").write_text(json.dumps(config, indent=2))
+    sync(OUT / "config.json")
     all_items = []
     for split in ("val", "train"):   # val holds frames 12-282 of this sequence, train the rest
         meta_path = ensure_file(f"ImageSets-rosa-6class/kitti360_rosa_infos_{split}.pkl")
@@ -274,6 +312,18 @@ def main():
     lrs = {"means": 1.6e-4 * scene_scale, "quats": 1e-3, "scales": 5e-3, "opacities": 5e-2, "colors": 2.5e-2}
     optimizers = {k: SelectiveAdam([{"params": [params[k]], "lr": lr, "name": k}], eps=1e-15, betas=(0.9, 0.999))
                   for k, lr in lrs.items()}
+    start_step = 0
+    ckpt_dir = (Path(SYNC_DIR) / RUN_NAME) if SYNC_DIR else OUT
+    if RESUME and (ckpt_dir / "ckpt.pt").exists():
+        ck = torch.load(ckpt_dir / "ckpt.pt", map_location=DEV)
+        params = torch.nn.ParameterDict({k: torch.nn.Parameter(v.to(DEV)) for k, v in ck["params"].items()})
+        optimizers = {k: SelectiveAdam([{"params": [params[k]], "lr": lr, "name": k}], eps=1e-15,
+                                       betas=(0.9, 0.999)) for k, lr in lrs.items()}
+        for k, opt in optimizers.items():
+            opt.load_state_dict(ck["opt"][k])
+        start_step = int(ck["step"])
+        print(f"[RESUME] step {start_step}, {len(params['means'])} Gaussians from {ckpt_dir / 'ckpt.pt'}", flush=True)
+        del ck
     # 3DGUT (with_eval3d) never touches means2d, so gradient-based densification (DefaultStrategy)
     # has nothing to read. MCMC relocates dead Gaussians and grows towards cap_max instead.
     strategy = MCMCStrategy(cap_max=CAP_MAX, refine_start_iter=500, refine_stop_iter=int(STEPS * 0.8),
@@ -319,9 +369,16 @@ def main():
                      params["scales"].cpu().numpy(), params["opacities"].cpu().numpy(),
                      params["colors"].sigmoid().cpu().numpy())
 
+    def save_ckpt(next_step):
+        path, tmp = OUT / "ckpt.pt", OUT / "ckpt.pt.tmp"
+        torch.save({"step": next_step, "params": {k: v.detach().cpu() for k, v in params.items()},
+                    "opt": {k: o.state_dict() for k, o in optimizers.items()}}, tmp)
+        os.replace(tmp, path)
+        sync(path)
+
     t0 = time.perf_counter()
     log = []
-    for step in range(STEPS):
+    for step in range(start_step, STEPS):
         v = random.choice(train)
         progress = step / max(1, STEPS - 1)
         optimizers["means"].param_groups[0]["lr"] = lrs["means"] * (0.01 ** progress)
@@ -339,18 +396,22 @@ def main():
         with torch.no_grad():
             params["scales"].clamp_(np.log(0.005), np.log(0.5))
         if step == 0 or (step + 1) % 500 == 0:
-            rate = (step + 1) / (time.perf_counter() - t0)
+            rate = (step + 1 - start_step) / (time.perf_counter() - t0)
             print(f"step {step + 1}/{STEPS} loss={loss.item():.4f} gaussians={len(params['means'])} "
                   f"visible={int(visible.sum())} {rate:.1f} it/s", flush=True)
             log.append(dict(step=step + 1, loss=loss.item(), gaussians=len(params["means"])))
+        if CKPT_EVERY and (step + 1) % CKPT_EVERY == 0 and step + 1 < STEPS:
+            save_ckpt(step + 1)
         if (step + 1) % 5000 == 0 and step + 1 < STEPS:
             export("_partial")
+            sync(OUT / "gaussians_partial.ply")
             if test:
                 print(f"[EVAL] step {step + 1} held-out PSNR {evaluate()}", flush=True)
 
     metrics = {"psnr_per_camera": evaluate() if test else {}, "gaussians": len(params["means"]),
                "frames": len(frame_ids), "steps": STEPS, "train_seconds": time.perf_counter() - t0, "log": log}
     export("")
+    sync(OUT / "gaussians.ply")
     for cam in ("image_00", "image_02", "image_03"):
         v = next((x for x in test or train if x["cam"] == cam), None)
         if v is not None:
@@ -358,7 +419,12 @@ def main():
                 pred, _ = render(v)
             sheet = torch.cat([gt(v), pred.clamp(0, 1)], dim=1).cpu().numpy()
             cv2.imwrite(str(OUT / f"compare_{cam}.png"), sheet[:, :, ::-1] * 255)
-    (OUT / "metrics.json").write_text(json.dumps(metrics, indent=2))
+            sync(OUT / f"compare_{cam}.png")
+    (OUT / "metrics.json").write_text(json.dumps({**metrics, "config": config}, indent=2))
+    sync(OUT / "metrics.json")
+    if Path("/content/train.log").exists():
+        shutil.copyfile("/content/train.log", OUT / "train.log")
+        sync(OUT / "train.log")
     print(f"[DONE] {metrics['train_seconds']:.0f}s | held-out PSNR {metrics['psnr_per_camera']}", flush=True)
     print("[OUT]", OUT, flush=True)
 
