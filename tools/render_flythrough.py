@@ -30,6 +30,7 @@ SUB = int(os.environ.get("FLY_SUB", "10"))
 FPS = int(os.environ.get("FLY_FPS", "30"))
 os.environ.setdefault("KITTI360_ARCHIVE", "/content/drive/MyDrive/datasets/kitti360_full")
 
+os.environ["KITTI360_N_FRAMES"] = str(N_FRAMES)   # the trainer module reads it at import
 TRAINER = os.environ.get("FLY_TRAINER", str(Path(__file__).resolve().with_name("colab_cli_kitti360.py")))
 spec = importlib.util.spec_from_file_location("trainer", TRAINER)
 trainer = importlib.util.module_from_spec(spec)
@@ -62,8 +63,7 @@ def front_c2w_path():
         p = trainer.ensure_file(f"ImageSets-rosa-6class/kitti360_rosa_infos_{split}.pkl")
         items += pickle.load(p.open("rb"))["data_list"]
     official = trainer.read_official_poses()
-    items = sorted([x for x in items if trainer.SEQ in x["lidar_path"] and x["frame_id"] in official],
-                   key=lambda x: x["frame_id"])[:N_FRAMES]
+    items = trainer.select_items(items, official)   # the same frames the model was trained on
     front0 = np.array(items[0]["images"]["CAM_FRONT"]["lidar2cam"], dtype=np.float64)
     origin = official[items[0]["frame_id"]][:3, 3].copy()
     c2w = []

@@ -7,7 +7,7 @@
 - gsplat MCMCStrategy: relocation of dead Gaussians and growth to a cap (no 2D gradients needed).
 
 Env: KITTI360_N_FRAMES (100), KITTI360_STEPS (20000), KITTI360_MAX_GAUSSIANS (120000), KITTI360_CAP_MAX (1000000), KITTI360_SYNC_DIR, KITTI360_RUN_NAME, KITTI360_RESUME,
-     KITTI360_TEST_EVERY (10), KITTI360_ARCHIVE, KITTI360_OUT (/content/kitti360_cli_out).
+     KITTI360_TEST_EVERY (10), KITTI360_SEQ, KITTI360_START, KITTI360_ARCHIVE, KITTI360_OUT (/content/kitti360_cli_out).
 """
 import json
 import os
@@ -33,7 +33,9 @@ from gsplat.strategy import MCMCStrategy
 BASE = "https://huggingface.co/datasets/danny042/KITTI-360-fisheye/resolve/main"
 POSES_URL = ("https://s3.eu-central-1.amazonaws.com/avg-projects/KITTI-360/"
              "89a6bae3c8a6f789e12de4807fc1e8fdcf182cf4/data_poses.zip")
-SEQ = "2013_05_28_drive_0003_sync"
+SEQ = os.environ.get("KITTI360_SEQ", "2013_05_28_drive_0003_sync")
+START = int(os.environ.get("KITTI360_START", "0"))   # first frame id to consider
+MAX_GAP = 5                                          # frames further apart than this break a run
 ARCHIVE = Path(os.environ.get("KITTI360_ARCHIVE", "/content/kitti360_min"))
 OUT = Path(os.environ.get("KITTI360_OUT", "/content/kitti360_cli_out"))
 ROOT = OUT / "work"   # scratch space inside the output directory: always writable, not Colab-specific
@@ -263,6 +265,26 @@ def save_ply(path, means, quats, scales, opacity, colors):
         stream.write(data.tobytes())
 
 
+def select_items(all_items, official):
+    """First run of N_FRAMES consecutive frames (gaps <= MAX_GAP) of SEQ from START that have poses."""
+    pool = sorted((x for x in all_items if SEQ in x["lidar_path"] and x["frame_id"] in official
+                   and x["frame_id"] >= START), key=lambda x: x["frame_id"])
+    runs, cur = [], []
+    for x in pool:
+        if cur and x["frame_id"] - cur[-1]["frame_id"] > MAX_GAP:
+            runs.append(cur)
+            cur = []
+        cur.append(x)
+    if cur:
+        runs.append(cur)
+    if not runs:
+        raise SystemExit(f"no frames with poses for {SEQ} from frame {START}")
+    run = next((r for r in runs if len(r) >= N_FRAMES), max(runs, key=len))
+    if len(run) < N_FRAMES:
+        print(f"[WARN] longest run in {SEQ} from frame {START} has {len(run)} frames (< {N_FRAMES})", flush=True)
+    return run[:N_FRAMES]
+
+
 # ------------------------------------------------------------------ main
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
@@ -271,7 +293,7 @@ def main():
     np.random.seed(SEED)
     torch.manual_seed(SEED)
     import gsplat
-    config = dict(mask=USE_MASK, ssim=USE_SSIM, sky=USE_SKY, run=RUN_NAME, seed=SEED, frames=N_FRAMES, steps=STEPS, cap_max=CAP_MAX,
+    config = dict(sequence=SEQ, start=START, mask=USE_MASK, ssim=USE_SSIM, sky=USE_SKY, run=RUN_NAME, seed=SEED, frames=N_FRAMES, steps=STEPS, cap_max=CAP_MAX,
                   init_gaussians=MAX_GAUSSIANS, test_every=TEST_EVERY, image_scale=SCALE,
                   torch=torch.__version__, gsplat=gsplat.__version__, resume=RESUME,
                   gpu=torch.cuda.get_device_name(0))
@@ -283,8 +305,7 @@ def main():
         with meta_path.open("rb") as stream:
             all_items += pickle.load(stream)["data_list"]
     official = read_official_poses()
-    items = sorted([x for x in all_items if SEQ in x["lidar_path"] and x["frame_id"] in official],
-                   key=lambda x: x["frame_id"])[:N_FRAMES]
+    items = select_items(all_items, official)
     frame_ids = [x["frame_id"] for x in items]
     item_by_frame = {x["frame_id"]: x for x in items}
     wanted = {f"{x:010d}" for x in frame_ids}

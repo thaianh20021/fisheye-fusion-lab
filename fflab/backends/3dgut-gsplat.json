@@ -63,6 +63,20 @@
           "help": "consecutive frames of sequence 0003"
         },
         {
+          "flag": "sequence",
+          "env": "KITTI360_SEQ",
+          "type": "string",
+          "default": "2013_05_28_drive_0003_sync",
+          "help": "KITTI-360 sequence (2013_05_28_drive_0000/0002/0003/0004/0005/0006/0007/0009/0010_sync)"
+        },
+        {
+          "flag": "start-frame",
+          "env": "KITTI360_START",
+          "type": "int",
+          "default": 0,
+          "help": "first frame id to consider; the first run of --frames consecutive frames with poses from here is used"
+        },
+        {
           "flag": "steps",
           "env": "KITTI360_STEPS",
           "type": "int",
@@ -173,6 +187,20 @@
           "type": "int",
           "default": 100,
           "help": "keyframes along the path"
+        },
+        {
+          "flag": "sequence",
+          "env": "KITTI360_SEQ",
+          "type": "string",
+          "default": "2013_05_28_drive_0003_sync",
+          "help": "KITTI-360 sequence (2013_05_28_drive_0000/0002/0003/0004/0005/0006/0007/0009/0010_sync)"
+        },
+        {
+          "flag": "start-frame",
+          "env": "KITTI360_START",
+          "type": "int",
+          "default": 0,
+          "help": "first frame id to consider; the first run of --frames consecutive frames with poses from here is used"
         },
         {
           "flag": "sub",
