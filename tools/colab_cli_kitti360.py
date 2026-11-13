@@ -315,12 +315,10 @@ def main():
             views.append(dict(fid=fid, cam=cam, model=model, h=h, w=w, image_np=rgb, K_np=k,
                               radial_np=radial, T=T))
 
-    masks = static_masks(views) if (USE_MASK or MASK_ONLY) else {}
+    masks = static_masks(views)     # always computed: evaluation uses it even when training ignores it
     if MASK_ONLY:
         print("[DONE] mask preview only", flush=True)
         return
-    if not USE_MASK:
-        masks = {}
 
     # ---- Gaussian initialisation: LiDAR geometry + colour from the camera that saw it.
     rng = np.random.default_rng(42)
@@ -413,7 +411,8 @@ def main():
         v["K"] = torch.tensor(v["K_np"], dtype=torch.float32, device=DEV)[None]
         v["radial"] = torch.tensor(v["radial_np"], dtype=torch.float32, device=DEV)[None]
         m = masks.get(v["cam"], np.ones((v["h"], v["w"]), np.float32))
-        v["mask"] = torch.from_numpy(m).to(DEV)[..., None]
+        v["eval_mask"] = torch.from_numpy(m).to(DEV)[..., None]
+        v["mask"] = v["eval_mask"] if USE_MASK else torch.ones_like(v["eval_mask"])   # loss mask
     test_fids = set(frame_ids[TEST_EVERY - 1::TEST_EVERY]) if TEST_EVERY else set()
     train = [v for v in views if v["fid"] not in test_fids]
     test = [v for v in views if v["fid"] in test_fids]
@@ -437,7 +436,7 @@ def main():
                 pred, _ = render(v)
                 err = (pred.clamp(0, 1) - gt(v)).square()
                 mse = err.mean().clamp_min(1e-10)
-                mse_m = ((err * v["mask"]).sum() / (v["mask"].sum() * 3).clamp_min(1)).clamp_min(1e-10)
+                mse_m = ((err * v["eval_mask"]).sum() / (v["eval_mask"].sum() * 3).clamp_min(1)).clamp_min(1e-10)
                 stats.setdefault(v["cam"], []).append((float(-10 * torch.log10(mse)), float(-10 * torch.log10(mse_m))))
         return {cam: {"full": float(np.mean([a for a, _ in x])), "masked": float(np.mean([b for _, b in x]))}
                 for cam, x in stats.items()}
