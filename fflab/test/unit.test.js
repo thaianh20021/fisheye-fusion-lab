@@ -1,9 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { parseArgs } from '../src/args.js';
 import { buildPlan, newRunName } from '../src/plan.js';
 import { loadRegistry, getBackend, resolveAccelerators, validateBackend } from '../src/registry.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { parsePoll, pollCode } from '../src/colab.js';
+import { rememberVenv, defaultVenv, resolvePython } from '../src/python.js';
 
 const reg = loadRegistry();
 const backend = getBackend(reg, '3dgut-gsplat');
@@ -61,3 +66,30 @@ test('colab poll protocol: offsets, whole lines, exit only when drained', () => 
   assert.ok(pollCode({ log: '/a b/log', exit: '/a/exit' }, 10).includes('log, exitf, off = "/a b/log", "/a/exit", 10'),
     'paths reach Python as plain string literals');
 });
+
+test('setup remembers a custom venv so doctor/train find it later', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'fflab-home-'));
+  const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, FFLAB_VENV: process.env.FFLAB_VENV };
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
+  delete process.env.FFLAB_VENV;
+  try {
+    assert.equal(defaultVenv(), path.join(home, '.fflab', 'venv'));
+    const venv = path.join(home, 'custom-venv');
+    fs.mkdirSync(path.join(venv, 'bin'), { recursive: true });
+    fs.mkdirSync(path.join(venv, 'Scripts'), { recursive: true });
+    fs.symlinkSync(process.execPath === '' ? '/usr/bin/python3' : (spawnPython() || '/usr/bin/python3'), path.join(venv, 'bin', 'python'));
+    rememberVenv(venv);
+    assert.equal(defaultVenv(), venv);
+    if (process.platform !== 'win32') assert.match(resolvePython().source, /custom-venv/);
+    process.env.FFLAB_VENV = path.join(home, 'other');
+    assert.equal(defaultVenv(), path.join(home, 'other'), 'FFLAB_VENV overrides the remembered venv');
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});
+
+function spawnPython() {
+  const r = spawnSync('python3', ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf8' });
+  return r.status === 0 ? r.stdout.trim() : null;
+}

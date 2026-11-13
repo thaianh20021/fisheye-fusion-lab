@@ -7,6 +7,22 @@ import { PKG_ROOT } from './registry.js';
 
 export const IS_WINDOWS = process.platform === 'win32';
 export const DEFAULT_VENV = path.join(os.homedir(), '.fflab', 'venv');
+const stateFile = () => path.join(os.homedir(), '.fflab', 'venv-path');
+
+/** `fflab setup --venv X` remembers X, so later commands find it without repeating --venv. */
+export function rememberVenv(venv) {
+  fs.mkdirSync(path.dirname(stateFile()), { recursive: true });
+  fs.writeFileSync(stateFile(), path.resolve(venv));
+}
+
+export function defaultVenv() {
+  if (process.env.FFLAB_VENV) return path.resolve(process.env.FFLAB_VENV);
+  try {
+    const remembered = fs.readFileSync(stateFile(), 'utf8').trim();
+    if (remembered) return remembered;
+  } catch { /* no venv remembered yet */ }
+  return path.join(os.homedir(), '.fflab', 'venv');
+}
 
 /** Python scripts: ../tools in a git checkout, python/ inside an installed package. */
 export function scriptsDir() {
@@ -55,7 +71,7 @@ export function resolvePython({ python, venv } = {}) {
     if (!found) throw new Error(`--python ${python} is not a working Python 3.9+`);
     return { ...found, source: '--python' };
   }
-  const venvDir = venv ? path.resolve(venv) : DEFAULT_VENV;
+  const venvDir = venv ? path.resolve(venv) : defaultVenv();
   if (fs.existsSync(venvPython(venvDir))) {
     const found = tryPython(venvPython(venvDir), []);
     if (found) return { ...found, source: `venv ${venvDir}` };

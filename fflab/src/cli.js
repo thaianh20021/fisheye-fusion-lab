@@ -6,7 +6,7 @@ import { parseArgs } from './args.js';
 import { loadRegistry, getBackend, resolveAccelerators, PKG_ROOT } from './registry.js';
 import { buildPlan, booleanFlags, GLOBAL_FLAGS } from './plan.js';
 import {
-  IS_WINDOWS, DEFAULT_VENV, findSystemPython, pipInstallArgs, pyJson, resolvePython, runStreaming,
+  IS_WINDOWS, DEFAULT_VENV, findSystemPython, pipInstallArgs, pyJson, rememberVenv, resolvePython, runStreaming,
   scriptPath, scriptsDir, venvPython,
 } from './python.js';
 import * as remote from './colab.js';
@@ -39,7 +39,7 @@ Common options
   --accel ID[,ID]    accelerators to enable (see fflab list)
   --config FILE      JSON with defaults: {"backend": "...", "accel": [...], "train": {...}, "colab": {...}}
   --python PATH      Python to use (default: venv, then system)
-  --venv DIR         venv (default ${DEFAULT_VENV})
+  --venv DIR         venv (default: the venv fflab setup last installed, else ${DEFAULT_VENV})
   --dry-run          print the plan, run nothing
 `;
 
@@ -204,7 +204,8 @@ async function cmdSetup(reg, argv) {
     const code = await runStreaming(cmd, args);
     if (code !== 0) throw new Error(`setup step failed (${desc}), exit ${code}`);
   }
-  say(opts['dry-run'] ? '\n(dry run: nothing installed)' : `\nDone. fflab uses ${venv} automatically. Check with: fflab doctor`);
+  if (!opts['dry-run']) rememberVenv(venv);
+  say(opts['dry-run'] ? '\n(dry run: nothing installed)' : `\nDone. fflab remembers ${venv} and uses it automatically (override with --venv or FFLAB_VENV). Check with: fflab doctor`);
   return 0;
 }
 
