@@ -253,8 +253,12 @@ def main():
     print(f"[INIT] {n} Gaussians from LiDAR, extent {np.ptp(points, axis=0).round(1)} m", flush=True)
 
     centers = np.array([-v["T"][:3, :3].T @ v["T"][:3, 3] for v in views if v["cam"] == "image_00"])
-    scene_scale = float(max(5.0, 1.1 * np.linalg.norm(centers - centers.mean(0), axis=1).max()))
-    print(f"[INIT] scene_scale {scene_scale:.1f} m", flush=True)
+    # gsplat scales the position lr and the split/prune thresholds with scene_scale. A driving
+    # sequence is hundreds of metres long but its Gaussians are centimetres to decimetres, so
+    # the trajectory length (~370 m for 100 frames) must not be used directly.
+    trajectory = float(np.linalg.norm(centers - centers.mean(0), axis=1).max())
+    scene_scale = float(np.clip(1.1 * trajectory, 5.0, 20.0))
+    print(f"[INIT] scene_scale {scene_scale:.1f} m (trajectory radius {trajectory:.0f} m)", flush=True)
 
     def logit(x):
         return np.log(x / (1 - x))
