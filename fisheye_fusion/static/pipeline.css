@@ -97,3 +97,12 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .item code, .job code, .kv code { overflow-wrap: anywhere; word-break: break-all; }
 .grid2 > div, .item { min-width: 0; }
 .gallery.wide { grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); }
+
+/* CARLA step */
+.actions.row { display: flex; gap: 8px; flex-wrap: wrap; }
+video { width: 100%; display: block; border-radius: 6px; background: #000; margin-top: 10px; }
+.run { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 12px; }
+.state-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--line); margin-right: 6px; }
+.state-dot.running { background: var(--ok); }
+.state-dot.starting, .state-dot.stopping { background: var(--accent); }
+.state-dot.failed { background: var(--warn); }

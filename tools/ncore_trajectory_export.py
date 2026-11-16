@@ -29,6 +29,10 @@ def main():
     poses = r.open_component_readers(PosesComponent.Reader)["default"]
     rig_world, ts = poses.get_dynamic_pose("rig", "world")
     out = {"rig_to_world": np.asarray(rig_world, np.float64), "timestamps_us": np.asarray(ts, np.int64)}
+    gm = meta.get("generic_meta_data", {})
+    if gm.get("frame_ids"):  # KITTI-360 clips (tools/kitti360_to_ncore.py): lets the bridge align other reconstructions
+        out["frame_ids"] = np.asarray(gm["frame_ids"], np.int64)
+        out["source_sequence"] = np.asarray(gm.get("source_sequence", ""))
     for cam_id in r.open_component_readers(CameraSensorComponent.Reader):
         out[f"T_rig_{cam_id}"] = np.asarray(poses.get_static_pose(cam_id, "rig"), np.float64)
     np.savez(a.out, **out)

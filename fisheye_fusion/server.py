@@ -69,6 +69,22 @@ class ConvertJob(BaseModel):
     name: str = ""
     fisheye_model: Literal["rectify120", "ftheta", "opencv"] = "rectify120"
 
+class CarlaJob(BaseModel):
+    ply: str = Field(min_length=1, max_length=512)
+    clip: str = Field(min_length=1, max_length=512)
+    use_carla: bool = True
+    npc: int = Field(default=3, ge=0, le=8)
+    start: float = Field(default=0.0, ge=0, le=3600)
+    duration: float = Field(default=10.0, ge=0, le=3600)
+    lateral: float = Field(default=0.0, ge=-10, le=10)
+    lift: float = Field(default=0.0, ge=-1, le=20)
+    fov: float = Field(default=90.0, ge=30, le=150)
+    gpu: int | None = Field(default=None, ge=0, le=63)
+    name: str = ""
+
+class CarlaServerStart(BaseModel):
+    gpu: int | None = Field(default=None, ge=0, le=63)
+
 class EvaluateJob(BaseModel):
     ply: str = Field(min_length=1, max_length=512)
     clip: str = Field(min_length=1, max_length=512)
@@ -298,7 +314,26 @@ def create_app():
 
     @app.get("/api/setup")
     def setup():
-        return pipeline.discovery.report()
+        return pipeline.discovery.report() | {"carla": pipeline.carla_server.status()}
+
+    @app.get("/api/carla/server")
+    def carla_server_status():
+        return pipeline.carla_server.status()
+
+    @app.post("/api/carla/server/start")
+    def carla_server_start(body: CarlaServerStart):
+        return pipeline.carla_server.start(body.gpu)
+
+    @app.post("/api/carla/server/stop")
+    def carla_server_stop():
+        return pipeline.carla_server.stop()
+
+    @app.post("/api/pipeline/carla")
+    def pipeline_carla(job: CarlaJob):
+        cfg = job.model_dump()
+        if not cfg["name"]:
+            cfg.pop("name")
+        return pipeline.carla(cfg)
 
     @app.get("/api/outputs/{relative:path}")
     def output_file(relative: str):

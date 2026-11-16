@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { convertPlan, evalPlan, nurecPlan, findCheckpoint, MODEL_CAMERAS } from '../src/nurec.js';
+import { carlaPlan, convertPlan, evalPlan, nurecPlan, findCheckpoint, MODEL_CAMERAS } from '../src/nurec.js';
 
 function workspace() {
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'fflab-nurec-'));
@@ -90,4 +90,33 @@ test('fflab help nurec and a dry run through the real CLI', () => {
   assert.equal(dry.status, 0, dry.stderr);
   assert.match(dry.stdout, /--camera-id camera_fisheye_right_03/);
   assert.match(dry.stdout, /dry run/);
+});
+
+test('carla: trajectory export then bridge; CARLA by default, --no-carla renders the scene only', () => {
+  const ws = workspace();
+  fs.writeFileSync(path.join(ws, 'scene.ply'), '');
+  const plan = carlaPlan({ ply: 'scene.ply', clip: 'outputs/ncore/c/c.json', npc: '4', lateral: '-1.5', gpu: '1', name: 'v' }, ws, '/venv/bin/python');
+  const [traj, bridge] = plan.steps;
+  assert.equal(path.basename(traj.args[0]), 'ncore_trajectory_export.py');
+  assert.match(traj.cmd, /instant-nurec/);
+  assert.equal(bridge.cmd, '/venv/bin/python');
+  assert.equal(path.basename(bridge.args[0]), 'carla_nurec_bridge.py');
+  assert.equal(flag(bridge.args, '--carla'), '127.0.0.1:2000');
+  assert.equal(flag(bridge.args, '--npc'), '4');
+  assert.equal(flag(bridge.args, '--lateral'), '-1.5');
+  assert.equal(plan.env.CUDA_VISIBLE_DEVICES, '1');
+  assert.ok(!bridge.args.includes('--trainer-config'));
+  const solo = carlaPlan({ ply: 'scene.ply', clip: 'outputs/ncore/c/c.json', carla: false, name: 'v2' }, ws, '/venv/bin/python');
+  assert.ok(!solo.steps[1].args.includes('--carla'));
+  assert.throws(() => carlaPlan({ ply: 'scene.ply', clip: 'outputs/ncore/c/c.json', fov: '400', name: 'v3' }, ws, '/p', { dryRun: true }), /--fov/);
+});
+
+test('carla: a 3DGUT run (config.json with frame_ids next to the PLY) gets aligned to the clip', () => {
+  const ws = workspace();
+  fs.mkdirSync(path.join(ws, 'fflab-runs', 'r'), { recursive: true });
+  fs.writeFileSync(path.join(ws, 'fflab-runs', 'r', 'gaussians.ply'), '');
+  fs.writeFileSync(path.join(ws, 'fflab-runs', 'r', 'config.json'), JSON.stringify({ frame_ids: [167, 172] }));
+  const plan = carlaPlan({ ply: 'fflab-runs/r/gaussians.ply', clip: 'outputs/ncore/c/c.json', data: path.join(ws, 'kitti360'), name: 'g' }, ws, '/p');
+  assert.equal(flag(plan.steps[1].args, '--trainer-config'), path.join(ws, 'fflab-runs', 'r', 'config.json'));
+  assert.equal(flag(plan.steps[1].args, '--kitti-data'), path.join(ws, 'kitti360'));
 });

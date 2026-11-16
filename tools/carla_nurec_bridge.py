@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import queue
 import time
 from pathlib import Path
@@ -61,6 +62,45 @@ def load_ply(path: Path, device: str):
         opacities=torch.sigmoid(col("opacity")[:, 0]),
         colors=(col("f_dc_0", "f_dc_1", "f_dc_2") * SH_C0 + 0.5).clamp(0, 1),
     )
+
+
+R_CAM_TO_FLU = np.array([[0, 0, 1, 0], [-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, 0, 1]], dtype=np.float64)
+
+
+def kitti_trainer_to_ncore(trainer_config: Path, traj_npz: Path, kitti_data: Path) -> np.ndarray:
+    """4x4 taking the 3DGUT trainer's world (KITTI-360 world shifted to cam 0 of its first frame,
+    tools/colab_cli_kitti360.py) to the NCore clip's world (rig of the clip's first frame)."""
+    from zipfile import ZipFile
+
+    cfg = json.loads(Path(trainer_config).read_text())
+    d = np.load(traj_npz)
+    if "frame_ids" not in d.files:
+        raise SystemExit("traj.npz has no frame_ids: re-export it with tools/ncore_trajectory_export.py")
+    seq, f_clip, f_train = str(d["source_sequence"]), int(d["frame_ids"][0]), int(cfg["frame_ids"][0])
+    if cfg.get("sequence") and cfg["sequence"] != seq:
+        raise SystemExit(f"trainer sequence {cfg['sequence']} != clip sequence {seq}")
+    poses = {}
+    with ZipFile(Path(kitti_data) / "data_poses.zip") as z, z.open(f"{seq}/cam0_to_world.txt") as f:
+        for line in f.read().decode().splitlines():
+            v = line.split()
+            if len(v) == 17 and int(v[0]) in (f_clip, f_train):
+                poses[int(v[0])] = np.array(v[1:], np.float64).reshape(4, 4)
+    rig0_to_kworld = poses[f_clip] @ np.linalg.inv(R_CAM_TO_FLU)  # NCore world -> KITTI-360 world
+    train_from_kworld = np.eye(4)
+    train_from_kworld[:3, 3] = -poses[f_train][:3, 3]
+    return np.linalg.inv(train_from_kworld @ rig0_to_kworld)
+
+
+def transform_scene(scene, T: np.ndarray):
+    """Move Gaussians by a rigid 4x4: positions and orientations (quaternions w, x, y, z)."""
+    R = torch.tensor(T[:3, :3], dtype=torch.float32, device=scene["means"].device)
+    t = torch.tensor(T[:3, 3], dtype=torch.float32, device=scene["means"].device)
+    qr = torch.tensor(Rotation.from_matrix(T[:3, :3]).as_quat()[[3, 0, 1, 2]], dtype=torch.float32, device=R.device)
+    w1, x1, y1, z1 = qr
+    w2, x2, y2, z2 = scene["quats"].unbind(-1)
+    quats = torch.stack([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                         w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2], -1)
+    return {**scene, "means": scene["means"] @ R.T + t, "quats": quats}
 
 
 class Sky:
@@ -175,6 +215,7 @@ def render(scene, sky, c2w: np.ndarray, K: np.ndarray, w: int, h: int, device: s
         zd, d_alpha, _ = rasterization(**{**ds, "colors": z[:, None].expand(-1, 3).contiguous()}, **common)
     rgb, alpha, d_alpha = out[0], alpha[0, ..., 0], d_alpha[0, ..., 0]
     depth = torch.where(d_alpha > 0.5, zd[0, ..., 0] / d_alpha.clamp_min(1e-6), torch.full_like(d_alpha, float("inf")))
+    depth = torch.nan_to_num(depth, nan=float("inf"))  # the rasteriser can leave NaN where nothing was hit
     if sky is not None:
         ys, xs = torch.meshgrid(torch.arange(h, device=device) + 0.5, torch.arange(w, device=device) + 0.5, indexing="ij")
         cam = torch.stack([(xs - K[0, 2]) / K[0, 0], (ys - K[1, 2]) / K[1, 1], torch.ones_like(xs)], -1)
@@ -246,6 +287,7 @@ class CarlaSide:
             f"({', '.join(a.type_id for a in self.npcs)}), sync {fps} Hz")
         self.world.tick()
         self._drain()
+        self._settled = False
 
     def _drain(self):
         for q in self.queues.values():
@@ -257,6 +299,11 @@ class CarlaSide:
             s.set_transform(ue_transform(self.carla, cam_T, self.z))
         for a, T in zip(self.npcs, npc_T):
             a.set_transform(ue_transform(self.carla, T, self.z))
+        if not self._settled:  # after the first teleport CARLA needs a few ticks before vehicles render fully
+            for _ in range(5):
+                self.world.tick()
+            self._drain()
+            self._settled = True
         frame = self.world.tick()
         imgs = {}
         for kind, q in self.queues.items():
@@ -280,6 +327,24 @@ class CarlaSide:
 
 
 # ------------------------------------------------------------------ main
+def to_h264(path: Path):
+    """Re-encode OpenCV's mp4v as H.264 (plays in browsers and Google Drive) when imageio-ffmpeg is installed."""
+    try:
+        import subprocess
+
+        import imageio_ffmpeg
+    except ImportError:
+        log("imageio-ffmpeg not installed: video stays mp4v (pip install imageio-ffmpeg for H.264)")
+        return
+    tmp = path.with_suffix(".h264.mp4")
+    r = subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-i", str(path),
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-movflags", "+faststart", str(tmp)])
+    if r.returncode == 0:
+        tmp.replace(path)
+    else:
+        log("H.264 re-encode failed; keeping mp4v")
+
+
 def contact_shadow(rgb, show, npc_T, footprints, c2w, K, strength=0.45):
     """Darken the road under each inserted vehicle: its footprint, slightly enlarged, projected and feathered."""
     h, w = show.shape
@@ -329,6 +394,8 @@ def main():
     p.add_argument("--keep-corridor", action="store_true", help="let Gaussians in the space the recording car drove through hide inserted vehicles")
     p.add_argument("--occlusion-margin", type=float, default=0.8, help="the reconstruction hides a vehicle only if this much nearer (m): fuzzy road splats must not swallow wheels")
     p.add_argument("--carla-z", type=float, default=300.0, help="lift the scene in CARLA above its map (m)")
+    p.add_argument("--trainer-config", default="", help="config.json of a 3DGUT run (fflab train): its PLY is in the KITTI-360 world, align it to the clip")
+    p.add_argument("--kitti-data", default="kitti360", help="KITTI-360 archive root holding data_poses.zip (with --trainer-config)")
     p.add_argument("--png-every", type=int, default=40)
     p.add_argument("--seed", type=int, default=0)
     a = p.parse_args()
@@ -340,6 +407,10 @@ def main():
     sky_path = Path(a.sky) if a.sky else ply.with_suffix("").with_suffix(".sky.npz")
     scene = load_ply(ply, dev)
     log(f"{len(scene['means']):,} Gaussians")
+    if a.trainer_config:
+        T = kitti_trainer_to_ncore(Path(a.trainer_config), Path(a.traj), Path(a.kitti_data))
+        scene = transform_scene(scene, T)
+        log(f"3DGUT scene aligned to the clip (rotation {np.degrees(Rotation.from_matrix(T[:3, :3]).magnitude()):.1f} deg, shift {np.linalg.norm(T[:3, 3]):.1f} m)")
     sky = Sky(sky_path, a.camera, dev) if sky_path.is_file() else None
     traj = Trajectory(Path(a.traj), a.camera)
     # the floaters stay in the picture (they are the only near road there is) but may not hide vehicles
@@ -371,7 +442,10 @@ def main():
                         T = T @ np.diag([-1.0, -1.0, 1.0, 1.0])  # oncoming: turned 180 degrees about z
                     npc_T.append(T)
                 c_rgb, veh, c_depth = sim.step(c2w @ np.linalg.inv(traj.T_rig_cam), npc_T)
-                show = veh & (c_depth < depth + a.occlusion_margin)
+                # hidden only where the reconstruction is clearly nearer (NaN-safe: unknown depth never hides)
+                show = veh & ~(depth + a.occlusion_margin <= c_depth)
+                if i == 0 and os.environ.get("BRIDGE_DEBUG"):
+                    np.savez(out / "debug0.npz", depth=depth, alpha=alpha, veh=veh, c_depth=c_depth, show=show, c_rgb=c_rgb)
                 rgb = contact_shadow(rgb, show, npc_T, sim.footprints, c2w, K)
                 rgb = np.where(show[..., None], c_rgb, rgb)
                 for k, T in enumerate(npc_T):  # alignment: projected vehicle centre vs its mask
@@ -396,6 +470,7 @@ def main():
         (out / "alignment.json").write_text(json.dumps(align))
         d = np.array([x["px_to_nearest_vehicle_pixel"] for x in align])
         log(f"alignment: vehicle centre within {np.percentile(d, 50):.1f} px (median), {np.percentile(d, 95):.1f} px (p95) of its mask")
+    to_h264(out / name)
     log(f"wrote {out / name}")
 
 

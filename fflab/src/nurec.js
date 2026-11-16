@@ -36,6 +36,14 @@ export const NUREC_USAGE = `KITTI-360 -> NCore -> Instant NuRec (needs backends/
   fflab eval    --ply FILE.ply --clip CLIP.json [--every 4] [--gpu N] [--name RUN]
         renders the PLY with gsplat (fflab setup venv) at the clip's cameras: outputs/eval/RUN/metrics.json
 
+  fflab carla   --ply FILE.ply --clip CLIP.json [--no-carla] [--npc 3] [--start 0] [--duration 10]
+                [--lateral 0] [--lift 0] [--fov 90] [--gpu N] [--port 2000] [--name RUN]
+        camera along the clip's recorded path through the reconstruction (+ NuRec sky); with a CARLA
+        server on localhost, CARLA vehicles are composited in by depth: outputs/carla/RUN/composite.mp4
+  fflab carla-server [--adapter 0] [--port 2000]
+        run CARLA 0.9.16 offscreen in the foreground (CARLA_ROOT, default ~/carla); --adapter is the
+        Vulkan adapter index, which may differ from nvidia-smi's GPU number (the Web UI finds it)
+
   --workspace DIR   repo root holding tools/, backends/, outputs/ (default: the repo fflab lives in)
   --dry-run         print the commands, run nothing`;
 
@@ -166,6 +174,40 @@ export function evalPlan(opts, ws, gsplatPython, { dryRun = false } = {}) {
   };
 }
 
+export function carlaPlan(opts, ws, gsplatPython, { dryRun = false } = {}) {
+  if (!opts.ply || !opts.clip) throw new Error('--ply FILE.ply and --clip CLIP.json are required');
+  const ply = userPath(ws, opts.ply);
+  const clip = userPath(ws, opts.clip);
+  for (const f of dryRun ? [] : [ply, clip]) if (!fs.existsSync(f)) throw new Error(`not found: ${f}`);
+  const num = (key, def, lo, hi) => {
+    const v = Number(opts[key] ?? def);
+    if (!Number.isFinite(v) || v < lo || v > hi) throw new Error(`--${key} must be a number in ${lo}..${hi}, got "${opts[key]}"`);
+    return String(v);
+  };
+  const useCarla = opts.carla !== false;
+  const out = newOutput(ws, 'carla', opts.name || `cli-${stamp()}`, dryRun);
+  const traj = path.join(out, 'traj.npz');
+  const info = { ply: path.relative(ws, ply), clip: path.relative(ws, clip), use_carla: useCarla };
+  if (!dryRun) fs.writeFileSync(path.join(out, 'job.json'), JSON.stringify(info));
+  const bridge = [path.join(ws, 'tools', 'carla_nurec_bridge.py'), ply, traj, '--out', out,
+    '--start', num('start', 0, 0, 3600), '--duration', num('duration', 10, 0, 3600),
+    '--lateral', num('lateral', 0, -10, 10), '--lift', num('lift', 0, -1, 20), '--fov', num('fov', 90, 30, 150)];
+  if (useCarla) bridge.push('--carla', `127.0.0.1:${int(opts, 'port', 2000, 1, 65535)}`, '--npc', String(int(opts, 'npc', 3, 0, 8)));
+  // a 3DGUT run (fflab train) keeps config.json with its frames next to the PLY: align its KITTI-360 world to the clip
+  const cfg = path.join(path.dirname(ply), 'config.json');
+  if (fs.existsSync(cfg) && JSON.parse(fs.readFileSync(cfg, 'utf8')).frame_ids) {
+    bridge.push('--trainer-config', cfg, '--kitti-data', userPath(ws, opts.data || 'kitti360'));
+  }
+  return {
+    steps: [
+      { label: 'export trajectory', cmd: nurecPython(ws), args: [path.join(ws, 'tools', 'ncore_trajectory_export.py'), clip, '--out', traj] },
+      { label: useCarla ? 'render with CARLA' : 'render', cmd: gsplatPython, args: bridge },
+    ],
+    outputs: out, cwd: ws,
+    env: { ...gpuEnv(opts), PATH: `${path.dirname(gsplatPython)}${path.delimiter}${process.env.PATH || ''}` },
+  };
+}
+
 // ------------------------------------------------------------------ runner
 async function runPlan(plan, dryRun) {
   for (const s of plan.steps) {
@@ -192,9 +234,15 @@ function requireNurec(ws) {
 }
 
 export async function cmdPipeline(command, argv) {
-  const { opts } = parseArgs(argv, { booleans: new Set(['lidar', 'dry-run']), lists: new Set(['cameras']) });
+  const { opts } = parseArgs(argv, { booleans: new Set(['lidar', 'dry-run', 'carla']), lists: new Set(['cameras']) });
   const ws = workspaceOf(opts);
   const dryRun = Boolean(opts['dry-run']);
+  if (command === 'carla-server') {
+    const script = path.join(ws, 'tools', 'carla_server.sh');
+    const args = [script, String(int(opts, 'adapter', 0, 0, 63)), String(int(opts, 'port', 2000, 1, 65535))];
+    say(`> bash ${args.join(' ')}   (CARLA_ROOT=${process.env.CARLA_ROOT || '~/carla'}; Ctrl+C stops it)`);
+    return dryRun ? 0 : runStreaming('bash', args, {});
+  }
   if (!dryRun) requireNurec(ws);
   if (command === 'convert') {
     const plan = convertPlan(opts, ws, { dryRun });
@@ -222,6 +270,13 @@ export async function cmdPipeline(command, argv) {
       say('\ncamera                      PSNR (dB)  views');
       for (const [c, v] of Object.entries(m)) say(`${c.padEnd(28)}${v.psnr_mean.toFixed(2).padStart(9)}  ${v.views}`);
     }
+    return code;
+  }
+  if (command === 'carla') {
+    const py = resolvePython(opts);
+    const plan = carlaPlan(opts, ws, py.executable, { dryRun });
+    const code = await runPlan(plan, dryRun);
+    if (code === 0 && !dryRun) findFiles(plan.outputs, '.mp4').forEach((v) => say(`video: ${path.relative(ws, v)}`));
     return code;
   }
   throw new Error(`unknown pipeline command ${command}`);

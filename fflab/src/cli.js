@@ -36,6 +36,8 @@ Usage
   fflab convert [options]            KITTI-360 slice -> NCore clip (for Instant NuRec)
   fflab nurec --clip CLIP [options]  Instant NuRec reconstruction -> Gaussian PLY
   fflab eval --ply P --clip C        render a PLY at the clip's cameras, PSNR per camera
+  fflab carla --ply P --clip C       drive through the reconstruction, CARLA vehicles composited in
+  fflab carla-server                 run CARLA offscreen (foreground)
   fflab help <train|render|check|nurec>  options of a command
 
 Common options
@@ -107,7 +109,7 @@ function cmdList(reg) {
 }
 
 function cmdHelp(reg, topic) {
-  if (['nurec', 'convert', 'eval'].includes(topic)) {
+  if (['nurec', 'convert', 'eval', 'carla', 'carla-server'].includes(topic)) {
     say(NUREC_USAGE);
     return 0;
   }
@@ -364,7 +366,9 @@ export async function main(argv) {
     case 'colab': return cmdColab(reg, rest[0], rest.slice(1));
     case 'convert':
     case 'nurec':
-    case 'eval': return cmdPipeline(command, rest);
+    case 'eval':
+    case 'carla':
+    case 'carla-server': return cmdPipeline(command, rest);
     default: throw new Error(`unknown command "${command}". Run: fflab help`);
   }
 }

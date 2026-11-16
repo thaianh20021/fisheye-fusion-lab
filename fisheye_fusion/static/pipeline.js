@@ -140,7 +140,7 @@ async function loadSetup() {
         ${info.lidar ? '<span class="tag">LiDAR</span>' : ''}</div>`).join('') || '<p class="muted">Chưa có sequence nào đủ file.</p>'}
     </div>`).join('') || `<p class="muted">Chưa thấy bộ dữ liệu. Đặt thư mục KITTI-360 (có <code>data_poses.zip</code>) trong workspace.</p>`;
 
-  const done = { data: setup.datasets.length > 0, convert: setup.clips.length > 0, nurec: setup.reconstructions.length > 0, results: setup.evaluations.length > 0 };
+  const done = { data: setup.datasets.length > 0, convert: setup.clips.length > 0, nurec: setup.reconstructions.length > 0, results: setup.evaluations.length > 0, carla: setup.carla_runs.length > 0 };
   document.querySelectorAll('#steps a').forEach((a) => a.classList.toggle('done', done[a.dataset.step]));
 
   // step 2 form
@@ -150,13 +150,14 @@ async function loadSetup() {
   const clips = setup.clips.map((c) => [c.path, `${c.sequence_id} · ${c.frames} frame · ${c.cameras.length} camera`]);
   fillSelect($('#nurecForm [name=clip]'), clips);
   fillSelect($('#evalForm [name=clip]'), clips);
-  for (const sel of [$('#nurecForm [name=gpu]'), $('#evalForm [name=gpu]')]) {
+  for (const sel of [$('#nurecForm [name=gpu]'), $('#evalForm [name=gpu]'), $('#carlaForm [name=gpu]'), $('#carlaServerForm [name=gpu]')]) {
     const had = sel.value;
     fillSelect(sel, gpuOptions());
     if (!had) sel.value = freestGpu();
   }
   updateSlots();
   renderResults();
+  renderCarla();
 }
 
 // ------------------------------------------------------------------ step 2: convert
@@ -274,7 +275,8 @@ function metricsTable(m) {
 
 function renderResults() {
   const recons = setup.reconstructions;
-  fillSelect($('#evalForm [name=ply]'), recons.map((r) => [r.path, `${r.path.split('/').at(-1)} · ${r.size_mib} MB · job ${r.job_id.slice(0, 8)}`]));
+  // the PSNR tools render in the clip's NCore world: only NuRec PLYs are in it (3DGUT has its own metrics.json)
+  fillSelect($('#evalForm [name=ply]'), recons.filter((r) => r.kind !== '3dgut').map((r) => [r.path, `${r.path.split('/').at(-1)} · ${r.size_mib} MB · job ${r.job_id.slice(0, 8)}`]));
   $('#recons').innerHTML = recons.map((r) => `
     <div class="item"><div class="row"><span class="name">${esc(r.path.split('/').at(-1))}</span><span class="muted">${r.size_mib} MB</span></div>
       <code>${esc(r.path)}</code><br>
@@ -319,4 +321,108 @@ $('#evalForm').addEventListener('submit', async (e) => {
 
 loadSetup().catch((err) => {
   $('#status').innerHTML = `<span class="bad">${esc(err.message)}</span>`;
+});
+
+// ------------------------------------------------------------------ step 5: CARLA
+const SERVER_TEXT = { stopped: 'Đang tắt', starting: 'Đang khởi động…', running: 'Đang chạy', stopping: 'Đang tắt…', failed: 'Lỗi' };
+let serverTimer;
+
+function renderServer(c) {
+  const state = c.port_open && c.state !== 'running' ? 'running' : c.state;
+  const external = c.port_open && !c.managed;
+  $('#carlaServer').innerHTML = !c.installed
+    ? `<p><span class="tag bad">Chưa có CARLA</span> Giải nén CARLA 0.9.16 vào <code>${esc(c.root)}</code> (hoặc đặt biến <code>CARLA_ROOT</code>).</p>`
+    : `<div class="row"><span class="name"><span class="state-dot ${esc(state)}"></span>${esc(SERVER_TEXT[state] || state)}</span>
+        <span class="muted">localhost:${c.port}${c.gpu !== null && c.gpu !== undefined ? ` · GPU ${c.gpu}` : ''}</span></div>
+      ${external ? '<p class="muted">Server này được bật từ ngoài giao diện; dùng được, nhưng tắt ở nơi đã bật nó.</p>' : ''}
+      ${c.message ? `<p class="muted">${esc(c.message)}</p>` : ''}
+      ${c.client ? '' : '<p><span class="tag bad">venv gsplat thiếu gói carla</span> <code>pip install carla==0.9.16</code></p>'}
+      ${c.log ? `<details><summary>Log server</summary><pre>${esc(c.log)}</pre></details>` : ''}`;
+  $('#carlaStart').disabled = !c.installed || c.port_open || ['starting', 'stopping'].includes(c.state);
+  $('#carlaStop').disabled = !c.managed;
+  $('#carlaForm [name=use_carla]').disabled = !c.port_open;
+  if (!c.port_open) $('#carlaForm [name=use_carla]').checked = false;
+  clearTimeout(serverTimer);
+  if (['starting', 'stopping'].includes(c.state)) {
+    serverTimer = setTimeout(async () => renderServer(await api('/api/carla/server').catch(() => c)), 2000);
+  }
+}
+
+function matchClip() {
+  const ply = $('#carlaForm [name=ply]').value;
+  const stem = ply.split('/').at(-1).replace(/\.ply$/, '');
+  // NuRec PLYs are named after their clip; a 3DGUT run matches the clip with the same frame count
+  const rec = setup.reconstructions.find((r) => r.path === ply);
+  const clip = setup.clips.find((c) => c.path.endsWith(`/${stem}.json`))
+    || (rec?.kind === '3dgut' && setup.clips.find((c) => c.frames === rec.frames));
+  if (clip) $('#carlaForm [name=clip]').value = clip.path;
+}
+
+function renderCarla() {
+  renderServer(setup.carla);
+  fillSelect($('#carlaForm [name=ply]'), setup.reconstructions.map((r) => [r.path, `${r.kind === '3dgut' ? '3DGUT' : 'NuRec'} · ${r.kind === '3dgut' ? r.job_id : r.path.split('/').at(-1)} · ${r.size_mib} MB`]));
+  fillSelect($('#carlaForm [name=clip]'), setup.clips.map((c) => [c.path, `${c.sequence_id} · ${c.frames} frame`]));
+  matchClip();
+  $('#carlaRuns').innerHTML = setup.carla_runs.map((r, i) => {
+    const base = r.path.replace(/^outputs\//, '');
+    const what = `${r.kind === '3dgut' ? '3DGUT' : 'NuRec'} · ${r.use_carla ? `${r.npc} xe CARLA` : 'chỉ cảnh dựng lại'}`;
+    const view = [r.lateral ? `lệch ${r.lateral} m` : '', r.lift ? `nâng ${r.lift} m` : '', r.fov ? `FOV ${r.fov}°` : ''].filter(Boolean).join(', ');
+    return `<div class="run"><div class="row"><span class="name">${esc(r.ply ? r.ply.split('/').at(-1) : r.path)}</span>
+      <span class="muted">${esc(what)}${view ? ` · ${esc(view)}` : ''} · <a href="/api/outputs/${url(`${base}/${r.video}`)}" download>tải video</a></span></div>
+      ${i < 3 ? `<video controls preload="metadata" src="/api/outputs/${url(`${base}/${r.video}`)}"></video>` : ''}</div>`;
+  }).join('') || '<p class="muted">Chưa có video nào.</p>';
+}
+
+$('#carlaForm').addEventListener('change', (e) => {
+  if (e.target.name === 'ply') matchClip();
+  if (e.target.name === 'use_carla') $('#carlaForm [name=npc]').disabled = !e.target.checked;
+});
+
+$('#carlaServerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const gpu = e.target.gpu.value === '' ? null : Number(e.target.gpu.value);
+  try {
+    renderServer(await api('/api/carla/server/start', { gpu }));
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$('#carlaStop').addEventListener('click', async () => {
+  $('#carlaStop').disabled = true;
+  try {
+    renderServer(await api('/api/carla/server/stop', {}));
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$('#carlaForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const body = {
+    ply: f.ply.value, clip: f.clip.value, use_carla: f.use_carla.checked, npc: Number(f.npc.value),
+    start: Number(f.start.value), duration: Number(f.duration.value), lateral: Number(f.lateral.value),
+    lift: Number(f.lift.value), fov: Number(f.fov.value), gpu: f.gpu.value === '' ? null : Number(f.gpu.value),
+  };
+  const btn = $('button[type=submit]', f);
+  btn.disabled = true;
+  try {
+    const job = await api('/api/pipeline/carla', body);
+    watchJob($('#carlaJob'), `/api/pipeline/${job.job_id}`, `/api/pipeline/${job.job_id}/cancel`,
+      (s) => {
+        const video = s.state === 'succeeded' && s.artifacts.find((a) => a.endsWith('.mp4'));
+        return video ? `<video controls autoplay muted src="/api/pipeline/${s.job_id}/artifacts/${url(video)}"></video>` : '';
+      },
+      async (s) => {
+        btn.disabled = false;
+        if (s.state === 'succeeded') {
+          await loadSetup();
+          toast('Đã render xong video.');
+        }
+      });
+  } catch (err) {
+    btn.disabled = false;
+    toast(err.message, true);
+  }
 });

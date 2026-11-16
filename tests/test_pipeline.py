@@ -120,3 +120,101 @@ def test_outputs_route(ws, monkeypatch):
         assert client.get("/api/outputs/eval/abc/nope.png").status_code == 400
         setup = client.get("/api/setup").json()
         assert setup["nurec"]["ok"] and "evaluations" in setup
+
+
+# ------------------------------------------------------------------ CARLA bridge jobs
+def _captured_carla(ws, monkeypatch, **cfg):
+    import fisheye_fusion.pipeline as pl
+
+    seen = {}
+    manager = PipelineManager(ws)
+    monkeypatch.setattr(type(manager.discovery), "gsplat_python", property(lambda self: ws / "gsplat-python"))
+    monkeypatch.setattr(manager, "_start", lambda kind, out, steps, env, info: seen.update(kind=kind, out=out, steps=steps, info=info) or {})
+    manager.carla({"ply": "scene/scene.ply", "clip": "clip/clip.json", **cfg})
+    return seen
+
+
+@pytest.fixture
+def carla_ws(ws):
+    for f in ("scene/scene.ply", "clip/clip.json", "gsplat-python"):
+        (ws / f).parent.mkdir(parents=True, exist_ok=True)
+        (ws / f).write_text("x")
+    return ws
+
+
+def test_carla_job_without_server_renders_neural_only(carla_ws, monkeypatch):
+    seen = _captured_carla(carla_ws, monkeypatch, use_carla=False, duration=5, lateral=-2.5)
+    labels = [label for label, _ in seen["steps"]]
+    assert seen["kind"] == "carla" and labels == ["export trajectory", "render"]
+    bridge = seen["steps"][1][1]
+    assert "--carla" not in bridge and "--trainer-config" not in bridge
+    assert bridge[bridge.index("--lateral") + 1] == "-2.5" and bridge[bridge.index("--duration") + 1] == "5.0"
+    assert json.loads((seen["out"] / "job.json").read_text())["use_carla"] is False
+
+
+def test_carla_job_needs_a_running_server(carla_ws, monkeypatch):
+    import fisheye_fusion.pipeline as pl
+
+    monkeypatch.setattr(pl, "_port_open", lambda port, host="127.0.0.1": False)
+    with pytest.raises(ValueError, match="no CARLA server"):
+        _captured_carla(carla_ws, monkeypatch, use_carla=True)
+    monkeypatch.setattr(pl, "_port_open", lambda port, host="127.0.0.1": True)
+    monkeypatch.setattr(pl.CarlaServer, "client_ok", lambda self: True)
+    bridge = _captured_carla(carla_ws, monkeypatch, use_carla=True, npc=5)["steps"][1][1]
+    assert bridge[bridge.index("--carla") + 1] == "127.0.0.1:2000" and bridge[bridge.index("--npc") + 1] == "5"
+
+
+def test_carla_job_aligns_3dgut_scenes(carla_ws, monkeypatch):
+    (carla_ws / "scene" / "config.json").write_text(json.dumps({"frame_ids": [167, 172]}))
+    seen = _captured_carla(carla_ws, monkeypatch, use_carla=False)
+    bridge = seen["steps"][1][1]
+    assert bridge[bridge.index("--trainer-config") + 1].endswith("scene/config.json")
+    assert bridge[bridge.index("--kitti-data") + 1].endswith("kitti360")
+    assert seen["info"]["kind"] == "3dgut"
+
+
+@pytest.mark.parametrize("cfg", [{"npc": 9}, {"npc": True}, {"fov": 10}, {"lateral": "1"}, {"duration": -1},
+                                 {"use_carla": "yes"}, {"name": "../x"}, {"cmd": "x"}])
+def test_carla_job_rejects_bad_config(carla_ws, monkeypatch, cfg):
+    with pytest.raises(ValueError):
+        _captured_carla(carla_ws, monkeypatch, **{"use_carla": False, **cfg})
+
+
+def test_discovery_lists_3dgut_runs_and_carla_videos(ws):
+    run = ws / "fflab-runs" / "r1"
+    run.mkdir(parents=True)
+    (run / "gaussians.ply").write_bytes(b"ply")
+    (run / "config.json").write_text(json.dumps({"frame_ids": [1, 2, 3]}))
+    (ws / "fflab-runs" / "no-config").mkdir()
+    (ws / "fflab-runs" / "no-config" / "gaussians.ply").write_bytes(b"ply")
+    vid = ws / "outputs" / "carla" / "v1"
+    vid.mkdir(parents=True)
+    (vid / "composite.mp4").write_bytes(b"mp4")
+    (vid / "job.json").write_text(json.dumps({"use_carla": True, "npc": 2}))
+    d = Discovery(ws)
+    recs = [r for r in d.reconstructions() if r["kind"] == "3dgut"]
+    assert [(r["job_id"], r["frames"]) for r in recs] == [("r1", 3)]
+    (v,) = d.carla_runs()
+    assert v["path"] == "outputs/carla/v1" and v["video"] == "composite.mp4" and v["npc"] == 2
+    assert d.output_file("carla/v1/composite.mp4").name == "composite.mp4"
+
+
+def test_landed_gpu_picks_the_gpu_that_grew(monkeypatch):
+    import fisheye_fusion.pipeline as pl
+
+    monkeypatch.setattr(pl, "_gpus", lambda: [{"index": 0, "memory_used_mib": 23700}, {"index": 1, "memory_used_mib": 9000},
+                                              {"index": 2, "memory_used_mib": 23650}])
+    assert pl._landed_gpu({0: 23600, 1: 3000, 2: 23600}) == 1
+    assert pl._landed_gpu({0: 23600, 1: 8900, 2: 23600}) is None  # nothing grew by 400 MiB
+
+
+def test_carla_server_refuses_when_not_installed(ws, monkeypatch, tmp_path):
+    import fisheye_fusion.pipeline as pl
+
+    monkeypatch.setenv("CARLA_ROOT", str(tmp_path / "no-carla"))
+    monkeypatch.setattr(pl, "_port_open", lambda port, host="127.0.0.1": False)
+    server = PipelineManager(ws).carla_server
+    with pytest.raises(ValueError, match="CARLA not found"):
+        server.start(None)
+    with pytest.raises(ValueError, match="unknown GPU"):
+        server.start(99)

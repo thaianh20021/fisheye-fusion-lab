@@ -21,6 +21,7 @@
     <a href="#step-convert" data-step="convert"><b>2</b> Chuyển sang NCore</a>
     <a href="#step-nurec" data-step="nurec"><b>3</b> Chạy NuRec</a>
     <a href="#step-results" data-step="results"><b>4</b> Kết quả</a>
+    <a href="#step-carla" data-step="carla"><b>5</b> CARLA</a>
   </nav>
 
   <main>
@@ -115,6 +116,45 @@
       </div>
       <div id="evalJob" class="job" hidden></div>
       <div id="evals"></div>
+    </section>
+
+    <!-- 5. carla -->
+    <section class="card" id="step-carla">
+      <h2><b>5</b> Lái thử trong cảnh dựng lại (CARLA)</h2>
+      <p class="hint">Camera chạy theo quỹ đạo gốc của clip qua cảnh Gaussian, có bầu trời của NuRec. Bật CARLA để thêm xe NPC: CARLA render xe ở cùng góc camera, xe được ghép vào cảnh theo độ sâu và có bóng. Mọi thứ chạy trên máy này, chỉ dùng cổng localhost.</p>
+      <div class="grid2">
+        <div>
+          <h3>Server CARLA</h3>
+          <div id="carlaServer" class="item"><p class="muted">Đang kiểm tra…</p></div>
+          <form id="carlaServerForm" class="form compact">
+            <label>GPU cho CARLA <select name="gpu"></select>
+              <small>Lần đầu bật trên một GPU có thể mất vài phút để dò đúng Vulkan adapter; lần sau nhớ sẵn.</small></label>
+            <div class="actions row">
+              <button class="primary" type="submit" id="carlaStart">Bật server</button>
+              <button type="button" id="carlaStop">Tắt server</button>
+            </div>
+          </form>
+        </div>
+        <div>
+          <h3>Render video</h3>
+          <form id="carlaForm" class="form compact">
+            <label>Cảnh (PLY) <select name="ply" required></select></label>
+            <label>Clip (quỹ đạo) <select name="clip" required></select>
+              <small>Tự chọn clip trùng tên với PLY.</small></label>
+            <label class="inline"><input name="use_carla" type="checkbox" checked> Thêm xe từ CARLA</label>
+            <label>Số xe NPC <input name="npc" type="number" min="0" max="8" value="3"></label>
+            <label>Bắt đầu từ giây <input name="start" type="number" min="0" step="1" value="0"></label>
+            <label>Thời lượng (giây, 0 = hết clip) <input name="duration" type="number" min="0" step="1" value="10"></label>
+            <label>Dịch camera sang trái (m, âm = sang phải) <input name="lateral" type="number" min="-10" max="10" step="0.5" value="0"></label>
+            <label>Nâng camera (m) <input name="lift" type="number" min="-1" max="20" step="0.5" value="0"></label>
+            <label>Góc nhìn ngang (°) <input name="fov" type="number" min="30" max="150" step="5" value="90"></label>
+            <label>GPU render <select name="gpu"></select></label>
+            <div class="actions"><button class="primary" type="submit">Render video</button></div>
+          </form>
+        </div>
+      </div>
+      <div id="carlaJob" class="job" hidden></div>
+      <div id="carlaRuns"></div>
     </section>
   </main>
 

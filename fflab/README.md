@@ -32,7 +32,9 @@ Hoặc chạy thẳng từ repo, không cần cài: `node fflab/bin/fflab.js <l�
 | `fflab convert` | cắt một đoạn KITTI-360 thành clip NCore (+ kiểm tra chiếu LiDAR) | không |
 | `fflab nurec --clip C` | dựng cảnh bằng Instant NuRec, ra Gaussian PLY | có |
 | `fflab eval --ply P --clip C` | render PLY ở các camera của clip, PSNR từng camera | có |
-| `fflab help train` | các tham số của một lệnh (`fflab help nurec` cho 3 lệnh trên) | không |
+| `fflab carla --ply P --clip C` | camera chạy qua cảnh dựng lại, ghép thêm xe CARLA (nếu server đang chạy) | có |
+| `fflab carla-server` | chạy CARLA 0.9.16 offscreen (foreground) | có |
+| `fflab help train` | các tham số của một lệnh (`fflab help nurec` cho các lệnh KITTI-360/NuRec/CARLA) | không |
 
 Mọi lệnh chạy đều có `--dry-run` để in kế hoạch (biến môi trường, script) mà không chạy gì.
 
